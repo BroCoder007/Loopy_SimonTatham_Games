@@ -148,3 +148,73 @@ class ConstraintPropagator:
                 return False, changes_mode
                 
         return True, changes_mode
+
+
+class BoundaryProfile:
+    """
+    Represents the state of a grid boundary for Divide & Conquer or DP approaches.
+    
+    In the "Broken Profile DP" context, this tracks the connectivity or "crossing state"
+    of the boundary line that separates processed cells from unprocessed cells.
+    
+    Attributes:
+        profile_data (tuple): A tuple representing the state.
+                              Could be a tuple of booleans (crossing/not crossing)
+                              or component IDs (for connectivity tracking).
+    """
+    def __init__(self, profile_data):
+        """
+        Initialize the BoundaryProfile.
+        
+        Args:
+            profile_data (iterable): The state data (converted to a tuple for immutability).
+        """
+        self.profile_data = tuple(profile_data)
+        # Precompute hash since profiles are used as dict keys frequently
+        self._hash = hash(self.profile_data)
+
+    def __hash__(self):
+        """
+        Crucial for using this object as a key in DP memoization tables.
+        
+        Returns:
+            int: The hash of the profile data.
+        """
+        return self._hash
+
+    def __eq__(self, other):
+        """
+        Check for equality with another BoundaryProfile.
+        
+        Args:
+            other (BoundaryProfile): The other profile to compare.
+            
+        Returns:
+            bool: True if profile_data is identical.
+        """
+        if not isinstance(other, BoundaryProfile):
+            return False
+        return self.profile_data == other.profile_data
+
+    def to_bitmask(self):
+        """
+        Convert the profile to an integer bitmask (if applicable).
+        
+        Useful for Zobrist hashing or compact storage if the profile consists
+        of boolean values (e.g., edge ON/OFF).
+        
+        Returns:
+            int: Integer representation of the profile.
+        """
+        mask = 0
+        try:
+            for i, val in enumerate(self.profile_data):
+                if val:
+                    mask |= (1 << i)
+        except TypeError:
+            # Fallback if profile data isn't boolean-like integers
+            pass
+        return mask
+
+    def __repr__(self):
+        return f"BoundaryProfile({self.profile_data})"
