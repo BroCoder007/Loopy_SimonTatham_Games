@@ -87,7 +87,7 @@ class HomePage(tk.Frame):
             self.diff_card.pack(pady=10)
     
     def start_with_mode(self, rows, cols, difficulty):
-        # After difficulty selection, ask for solving strategy (UI-only wiring).
+        # After difficulty selection, ask for solving strategy.
         # Default is Greedy if user closes the dialog.
         generator_type = "dnc" if self.var_use_dnc.get() else "prim"
         self._show_strategy_modal(
@@ -121,7 +121,7 @@ class HomePage(tk.Frame):
         tk.Label(card, text="Select Solving Strategy", font=FONT_HEADER, bg=CARD_BG, fg=TEXT_COLOR).pack(pady=(0, 10))
         tk.Label(
             card,
-            text="(UI wiring only for now — all options still use Greedy internally)",
+            text="Choose one CPU solving strategy.",
             font=FONT_SMALL,
             bg=CARD_BG,
             fg=TEXT_DIM,
@@ -131,9 +131,9 @@ class HomePage(tk.Frame):
         choice = tk.StringVar(value=strategy_store.get_strategy())
 
         options = [
-            ("Greedy Constraint Solver", "greedy"),
-            ("Dynamic Programming (State Compression)", "dynamic_programming"),
-            ("Dynamic Programming with Divide & Conquer Decomposition", "advanced_dp"),
+            ("Greedy Solver", "greedy"),
+            ("Divide & Conquer Solver", "divide_conquer"),
+            ("Dynamic Programming Solver", "dynamic_programming"),
         ]
 
         for label, value in options:
@@ -443,11 +443,11 @@ class GamePage(tk.Frame):
 
     def _get_strategy_display_name(self):
         strategy = getattr(self.game_state, "solver_strategy", "greedy")
+        if strategy == "divide_conquer":
+            return "Divide & Conquer"
         if strategy == "dynamic_programming":
-            return "Pure DP"
-        if strategy == "advanced_dp":
-            return "Advanced DP"
-        return "Greedy"
+            return "Dynamic Programming"
+        return "Greedy Solver"
 
     def hint(self):
         # Prefer solver output format when available, but remain backward-compatible.

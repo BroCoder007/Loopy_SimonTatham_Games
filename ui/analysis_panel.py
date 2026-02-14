@@ -50,7 +50,7 @@ class LiveAnalysisPanel(tk.Frame):
             spine.set_color(TEXT_DIM)
 
     def setup_table(self):
-        columns = ("Move #", "Greedy Move", "Greedy Time", "DP Move", "DP Time", "Adv Move", "Adv Time")
+        columns = ("Move #", "Greedy Move", "Greedy Time", "D&C Move", "D&C Time", "DP Move", "DP Time")
         self.tree = ttk.Treeview(self.bottom_frame, columns=columns, show="headings", height=5)
         
         # Styles for Treeview to match dark theme? 
@@ -94,8 +94,8 @@ class LiveAnalysisPanel(tk.Frame):
             values = (
                 row.get("move_number"),
                 row.get("greedy_move"), row.get("greedy_time"),
-                row.get("dp_move"), row.get("dp_time"),
-                row.get("advanced_move"), row.get("advanced_time")
+                row.get("dnc_move"), row.get("dnc_time"),
+                row.get("dp_move"), row.get("dp_time")
             )
             self.tree.insert("", "end", values=values)
             
@@ -104,19 +104,19 @@ class LiveAnalysisPanel(tk.Frame):
         
         # Time
         greedy_times = [self._safe_float(r.get("greedy_time")) for r in data]
+        dnc_times = [self._safe_float(r.get("dnc_time")) for r in data]
         dp_times = [self._safe_float(r.get("dp_time")) for r in data]
-        adv_times = [self._safe_float(r.get("advanced_time")) for r in data]
         
         # States
         greedy_states = [self._safe_int(r.get("greedy_states")) for r in data]
+        dnc_states = [self._safe_int(r.get("dnc_states")) for r in data]
         dp_states = [self._safe_int(r.get("dp_states")) for r in data]
-        adv_states = [self._safe_int(r.get("advanced_states")) for r in data]
         
         # Cumulative Time
         import itertools
         greedy_cum = list(itertools.accumulate(greedy_times))
+        dnc_cum = list(itertools.accumulate(dnc_times))
         dp_cum = list(itertools.accumulate(dp_times))
-        adv_cum = list(itertools.accumulate(adv_times))
         
         self.ax1.clear()
         self.ax2.clear()
@@ -124,27 +124,27 @@ class LiveAnalysisPanel(tk.Frame):
         
         # Colors: Use default Matplotlib cycle (C0, C1, C2...)
         c_greedy = "C2" # Green-ish in default cycle usually
+        c_dnc = "C3"    # Red-ish
         c_dp = "C0"     # Blue-ish
-        c_adv = "C3"    # Red-ish
 
         
         # Graph 1: Time
         self._plot_line(self.ax1, moves, greedy_times, c_greedy, "Greedy")
+        self._plot_line(self.ax1, moves, dnc_times, c_dnc, "D&C")
         self._plot_line(self.ax1, moves, dp_times, c_dp, "DP")
-        self._plot_line(self.ax1, moves, adv_times, c_adv, "Adv DP")
         self.ax1.set_title("Exec Time (ms)", color=TEXT_COLOR, fontsize=8)
         self.ax1.legend(fontsize=6)
         
         # Graph 2: States
         self._plot_line(self.ax2, moves, greedy_states, c_greedy)
+        self._plot_line(self.ax2, moves, dnc_states, c_dnc)
         self._plot_line(self.ax2, moves, dp_states, c_dp)
-        self._plot_line(self.ax2, moves, adv_states, c_adv)
         self.ax2.set_title("States Explored", color=TEXT_COLOR, fontsize=8)
 
         # Graph 3: Cumulative
         self._plot_line(self.ax3, moves, greedy_cum, c_greedy)
+        self._plot_line(self.ax3, moves, dnc_cum, c_dnc)
         self._plot_line(self.ax3, moves, dp_cum, c_dp)
-        self._plot_line(self.ax3, moves, adv_cum, c_adv)
         self.ax3.set_title("Cumulative Time (ms)", color=TEXT_COLOR, fontsize=8)
 
         # Re-apply styling

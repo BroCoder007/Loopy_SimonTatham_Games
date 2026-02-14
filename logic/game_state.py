@@ -20,7 +20,6 @@ from logic.validators import is_valid_move, check_win_condition
 from logic.solvers.greedy_solver import GreedySolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
-from logic.solvers.advanced_dp_solver import AdvancedDPSolver
 from logic.generators.dnc_generator import DivideAndConquerPuzzleGenerator
 from logic.statistics import StatisticsManager
 from daa.greedy_algos import prim_mst, dijkstra, huffman_coding
@@ -31,20 +30,18 @@ class GameState:
         self.cols = cols
         self.difficulty = difficulty
         self.game_mode = game_mode  # "vs_cpu", "two_player", "greedy_challenge"
-        # Strategy selection placeholder for future extensibility.
-        # If no strategy is selected, default to GreedySolver.
-        self.solver_strategy = solver_strategy or "greedy"
+        self.solver_strategy = self._normalize_solver_strategy(solver_strategy)
         self.generator_type = generator_type
         
         self.graph = Graph(rows, cols)
         self.clues = {}
+        self.solution_edges = set()  # Filled by _generate_clues()
         if game_mode in ["vs_cpu", "expert"]:
-            # Match strictly with ui/pages.py options
             if self.solver_strategy == "dynamic_programming":
                 self.cpu = DynamicProgrammingSolver(self)
-            elif self.solver_strategy == "advanced_dp":
-                self.cpu = AdvancedDPSolver(self)
-            else:
+            elif self.solver_strategy == "divide_conquer":
+                self.cpu = DivideConquerSolver(self)
+            else:  # "greedy"
                 self.cpu = GreedySolver(self)
         else:
             self.cpu = None
@@ -79,9 +76,22 @@ class GameState:
         
         self.undo_stack = []
         self.redo_stack = []
-        
-        self.solution_edges = set() # Set in _generate_clues (will be overwritten if exists)
+
         self.live_analysis_table = []  # Stores rows of comparative analysis data
+        self.teacher_mode = False  # Teacher mode for hinting bad moves
+
+    def _normalize_solver_strategy(self, strategy):
+        """
+        Restrict runtime routing to exactly three solver strategies:
+        - greedy
+        - divide_conquer
+        - dynamic_programming
+        """
+        if strategy in ("divide_conquer", "divide_and_conquer"):
+            return "divide_conquer"
+        if strategy == "dynamic_programming":
+            return "dynamic_programming"
+        return "greedy"
 
     def _assign_weights(self):
         # Assign random weights to all potential edges

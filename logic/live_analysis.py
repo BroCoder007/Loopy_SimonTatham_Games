@@ -5,8 +5,8 @@ import concurrent.futures
 from typing import Dict, Any, List, Optional
 from logic.game_state import GameState
 from logic.solvers.greedy_solver import GreedySolver
+from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
-from logic.solvers.advanced_dp_solver import AdvancedDPSolver
 
 class LiveAnalysisService:
     """
@@ -35,28 +35,28 @@ class LiveAnalysisService:
         def run_dp_task():
              return self._run_dp(cloned_state)
              
-        def run_adv_task():
-             return self._run_advanced_dp(cloned_state)
+        def run_dnc_task():
+             return self._run_dnc(cloned_state)
 
         # 3. Execute in Parallel with Timeout
         results = {
             "move_number": current_move_num,
             "greedy_move": "N/A", "greedy_time": 0.0, "greedy_states": 0,
+            "dnc_move": "N/A", "dnc_time": 0.0, "dnc_states": 0,
             "dp_move": "N/A", "dp_time": 0.0, "dp_states": 0,
-            "advanced_move": "N/A", "advanced_time": 0.0, "advanced_states": 0
         }
         
         # Using ThreadPoolExecutor because solvers are CPU-intensive but we want to fail gracefully on timeout.
         # Python threads don't truly parallelize CPU work due to GIL, but they allow us to coordinate timeouts.
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             future_greedy = executor.submit(run_greedy_task)
+            future_dnc = executor.submit(run_dnc_task)
             future_dp = executor.submit(run_dp_task)
-            future_adv = executor.submit(run_adv_task)
             
             futures_map = {
                 "greedy": future_greedy,
+                "dnc": future_dnc,
                 "dp": future_dp,
-                "advanced": future_adv
             }
             
             for key, future in futures_map.items():
@@ -121,23 +121,18 @@ class LiveAnalysisService:
             "states": states_explored
         }
 
-    def _run_advanced_dp(self, state_clone: GameState):
+    def _run_dnc(self, state_clone: GameState):
         start = time.time()
-        solver = AdvancedDPSolver(state_clone)
+        solver = DivideConquerSolver(state_clone)
         
         # Force computation
         move = solver.solve()
         
         duration = time.time() - start
         
-        # Sum up states from all regions
+        # D&C solver does not currently expose exact state counts.
         total_states = 0
-        merge_stats = getattr(solver, "_merge_stats", {})
-        if merge_stats:
-            region_stats = merge_stats.get("region_stats", {})
-            for r_info in region_stats.values():
-                total_states += r_info.get("states", 0)
-                
+
         return {
             "move": move,
             "time": duration,
