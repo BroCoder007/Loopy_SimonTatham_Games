@@ -10,6 +10,11 @@ from ui.styles import *
 
 class BoardCanvas(tk.Canvas):
     def __init__(self, master, game_state, on_move_callback):
+        try:
+            with open(r"c:\Users\LAKSHMI NARAYANA\Desktop\Loopy_SimonTatham_Games\debug_full.log", "a") as f:
+                f.write("BoardCanvas init called\n")
+        except:
+            pass
         super().__init__(master, bg=BG_COLOR, highlightthickness=0)
         self.game_state = game_state
         self.on_move_callback = on_move_callback
@@ -19,10 +24,18 @@ class BoardCanvas(tk.Canvas):
         
         self.bind("<Button-1>", self.on_click)
         self.bind("<Motion>", self.on_hover)
+        self.bind("<Configure>", self.on_resize)
         
         self.hovered_edge = None
         self.hint_edge = None
         
+        # Initialize coordinates to avoid AttributeError before first draw
+        self.start_x = 0
+        self.start_y = 0
+        
+    def on_resize(self, event):
+        self.draw()
+
     def draw(self):
         self.delete("all")
         

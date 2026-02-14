@@ -1,0 +1,37 @@
+Initializing 5x5 GameState (Medium)...
+Solver: AdvancedDPSolver
+Clues generated:
+  (0, 1): 0
+  (1, 0): 0
+  (1, 1): 0
+  (1, 3): 2
+  (2, 3): 0
+  (3, 1): 1
+  (3, 3): 1
+  (3, 4): 1
+  (4, 2): 2
+  (4, 3): 1
+
+Calling decide_move()...
+[AdvancedDPSolver] decide_move called.
+[AdvancedDPSolver] Computing full solution...
+Starting D&C Solve...
+Solving Q1: rows 0-2, cols 0-2
+  [Q 0-2, 0-2] Raw recursive solutions: 4
+  > Found 1 valid region states.
+Solving Q2: rows 0-2, cols 2-5
+  [Q 0-2, 2-5] Raw recursive solutions: 49152
+  > Found 456 valid region states.
+Solving Q3: rows 2-5, cols 0-2
+  [Q 2-5, 0-2] Raw recursive solutions: 32768
+  > Found 448 valid region states.
+Solving Q4: rows 2-5, cols 2-5
+  [Q 2-5, 2-5] Raw recursive solutions: 11520
+  > Found 20 valid region states.
+Merged Top Half: 20 states.
+Merged Bottom Half: 112 states.
+Merged Full Grid: 2 states.
+[AdvancedDPSolver] No valid global solutions found.
+[AdvancedDPSolver] No solution found in _final_solution_edges. FALLBACK.
+[AdvancedDPSolver] Executing Fallback (Random Valid Move)
+PASS: CPU decided move ((4, 1), (5, 1))

@@ -13,27 +13,39 @@ Manages:
 import os
 import random
 import pickle
-import heapq
 from collections import Counter
 from logic.graph import Graph
 from logic.validators import is_valid_move, check_win_condition
-from logic.greedy_cpu import GreedyCPU
+from logic.solvers.greedy_solver import GreedySolver
+from logic.solvers.divide_conquer_solver import DivideConquerSolver
+from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
+from logic.generators.dnc_generator import DivideAndConquerPuzzleGenerator
 from logic.statistics import StatisticsManager
-from daa.greedy_algos import prim_mst, dijkstra, huffman_coding
+from daa.greedy_algos import prim_mst, huffman_coding
 
 class GameState:
-    def __init__(self, rows=5, cols=5, difficulty="Medium", game_mode="vs_cpu"):
+    def __init__(self, rows=5, cols=5, difficulty="Medium", game_mode="vs_cpu", solver_strategy=None, generator_type="prim"):
         self.rows = rows
         self.cols = cols
         self.difficulty = difficulty
         self.game_mode = game_mode  # "vs_cpu", "two_player", "greedy_challenge"
-        self.teacher_mode = False # DAA Feature: Teacher Mode
+        self.solver_strategy = self._normalize_solver_strategy(solver_strategy)
+        self.generator_type = generator_type
         
         self.graph = Graph(rows, cols)
         self.clues = {}
-        # CPU is active in vs_cpu AND expert mode (Duel)
-        self.cpu = GreedyCPU(self) if game_mode in ["vs_cpu", "expert"] else None
+        self.solution_edges = set()  # Filled by _generate_clues()
+        if game_mode in ["vs_cpu", "expert"]:
+            if self.solver_strategy == "dynamic_programming":
+                self.cpu = DynamicProgrammingSolver(self)
+            elif self.solver_strategy == "divide_conquer":
+                self.cpu = DivideConquerSolver(self)
+            else:  # "greedy"
+                self.cpu = GreedySolver(self)
+        else:
+            self.cpu = None
         self.stats_mgr = StatisticsManager()
+        self.last_cpu_move_info = None  # To store explanation of the last CPU move
         
         # Greedy Mode Mechanics
         self.edge_weights = {}
@@ -42,7 +54,7 @@ class GameState:
         self.energy_cpu = 100
         self.max_energy_cpu = 100
         
-        self._assign_weights()
+        self._initialize_edge_weights()
 
         if game_mode == "expert":
             self.turn = "Player 1 (Human)" # Expert is now PvE
@@ -63,20 +75,34 @@ class GameState:
         
         self.undo_stack = []
         self.redo_stack = []
-        
-        # self.solution_edges = set() # Set in _generate_clues
 
-    def _assign_weights(self):
-        # Assign random weights to all potential edges
+        self.live_analysis_table = []  # Stores rows of comparative analysis data
+        self.teacher_mode = False  # Teacher mode for hinting bad moves
+
+    def _normalize_solver_strategy(self, strategy):
+        """
+        Restrict runtime routing to exactly three solver strategies:
+        - greedy
+        - divide_conquer
+        - dynamic_programming
+        """
+        if strategy in ("divide_conquer", "divide_and_conquer"):
+            return "divide_conquer"
+        if strategy == "dynamic_programming":
+            return "dynamic_programming"
+        return "greedy"
+
+    def _initialize_edge_weights(self):
+        # Deterministic uniform edge cost map.
         for r in range(self.rows + 1):
             for c in range(self.cols):
                 u, v = (r, c), (r, c+1)
-                self.edge_weights[tuple(sorted((u, v)))] = random.randint(1, 9)
+                self.edge_weights[tuple(sorted((u, v)))] = 1
                 
         for r in range(self.rows):
             for c in range(self.cols + 1):
                 u, v = (r, c), (r+1, c)
-                self.edge_weights[tuple(sorted((u, v)))] = random.randint(1, 9)
+                self.edge_weights[tuple(sorted((u, v)))] = 1
 
     def _calculate_required_energy(self):
         return 100 # Placeholder
@@ -153,103 +179,56 @@ class GameState:
 
     def get_hint(self):
         """
-        Robust Hint System (Consolidated):
-        1. "Loose Ends" Logic using Dijkstra's Algorithm (Refactored).
-           Find shortest path between two degree-1 vertices.
-        2. Fallback to Helper Logic (Solution edge suggestion).
+        Strategy-routed hint dispatcher.
+        Delegates hint generation to the currently selected solver strategy.
         """
-        
-        # 1. Dijkstra for Loose Ends (Any Mode provided hints are allowed)
-        # Find all vertices with degree 1
-        degree_ones = [node for node in self.graph.vertices if self.graph.get_degree(node) == 1]
-        
-        if len(degree_ones) >= 2:
-            # Attempt to connect two loose ends
-            start = degree_ones[0]
-            targets = set(degree_ones[1:])
-            
-            # Construct Weighted Graph of VALID MOVES using edge_weights
-            # Nodes: All grid vertices
-            # Edges: All valid, non-existing edges
-            dijkstra_graph = {}
-            
-            # We need to build the graph for all possible nodes
-            # A node u has neighbors v if (u,v) is valid add
-            
-            # Optimisation: Build on demand or full build? Full build is safer for Dijkstra.
-            for r in range(self.rows + 1):
-                for c in range(self.cols + 1):
-                    u = (r, c)
-                    dijkstra_graph[u] = []
-                    
-                    # Check potential neighbors
-                    candidates = []
-                    if r < self.rows: candidates.append(((r+1, c), tuple(sorted((u, (r+1, c)))))) # Down
-                    if r > 0: candidates.append(((r-1, c), tuple(sorted((u, (r-1, c)))))) # Up
-                    if c < self.cols: candidates.append(((r, c+1), tuple(sorted((u, (r, c+1)))))) # Right
-                    if c > 0: candidates.append(((r, c-1), tuple(sorted((u, (r, c-1)))))) # Left
-                    
-                    for neighbor, edge_key in candidates:
-                         if edge_key not in self.graph.edges:
-                             # Is it valid?
-                             valid, _ = is_valid_move(self.graph, u, neighbor, self.clues)
-                             if valid:
-                                 weight = self.edge_weights.get(edge_key, 1)
-                                 dijkstra_graph[u].append((neighbor, weight))
+        strategy = self._normalize_solver_strategy(self.solver_strategy)
 
-            # Run Dijkstra
-            dists, preds = dijkstra(dijkstra_graph, start)
-            
-            # Find closest target
-            min_dist = float('inf')
-            best_target = None
-            
-            for t in targets:
-                if dists.get(t, float('inf')) < min_dist:
-                    min_dist = dists[t]
-                    best_target = t
-            
-            if best_target and min_dist != float('inf'):
-                # Backtrack to find first move
-                curr = best_target
-                path = []
-                while curr != start and curr is not None:
-                    path.append(curr)
-                    curr = preds[curr]
-                
-                if path:
-                    first_step_node = path[-1] # The one connected to start
-                    return (start, first_step_node), "Hint: Connect this loose end!"
+        if strategy == "divide_conquer":
+            solver = self.cpu if isinstance(self.cpu, DivideConquerSolver) else DivideConquerSolver(self)
+        elif strategy == "dynamic_programming":
+            solver = self.cpu if isinstance(self.cpu, DynamicProgrammingSolver) else DynamicProgrammingSolver(self)
+        else:
+            solver = self.cpu if isinstance(self.cpu, GreedySolver) else GreedySolver(self)
 
-        # 2. Fallback: Suggest solution edge
-        if not self.solution_edges:
-            return None, "No solution available."
+        hint = solver.generate_hint(self)
+        if isinstance(hint, dict):
+            return hint
 
-        for edge in self.solution_edges:
-            if edge not in self.graph.edges:
-                u, v = edge
-                valid, reason = is_valid_move(self.graph, u, v, self.clues)
-                if valid:
-                    return (u, v), "Add this solution edge!"
-                else:
-                    # Check blockers
-                    for neighbor in self.graph.adj_list[u]:
-                        existing_edge = tuple(sorted((u, neighbor)))
-                        if existing_edge not in self.solution_edges:
-                            return existing_edge, "Remove this incorrect edge!"
-                    for neighbor in self.graph.adj_list[v]:
-                        existing_edge = tuple(sorted((v, neighbor)))
-                        if existing_edge not in self.solution_edges:
-                            return existing_edge, "Remove this incorrect edge!"
-                            
-        for edge in self.graph.edges:
-            if edge not in self.solution_edges:
-                return edge, "Remove this extra edge!"
-                
-        return None, "Puzzle solved?"
+        move, reason = (None, "No hint available.")
+        if isinstance(hint, tuple) and len(hint) == 2:
+            move, reason = hint
+
+        return {
+            "move": move,
+            "strategy": strategy.replace("_", " ").title(),
+            "explanation": reason if isinstance(reason, str) else "No hint available.",
+        }
 
     def _generate_clues(self):
         """
+        Generate clues using selected generator algorithm.
+        Default: Prim's Algorithm.
+        Alternative: Divide & Conquer.
+        """
+        if self.generator_type == "dnc":
+            print("[GameState] Using Divide & Conquer Generator...")
+            generator = DivideAndConquerPuzzleGenerator(self.rows, self.cols, self.difficulty)
+            self.clues, self.solution_edges = generator.generate()
+        else:
+            # Legacy/Default Prim's MST based generation
+            self._generate_clues_prim()
+
+        if self.game_mode == "expert":
+            total_weight = 0
+            for edge in self.solution_edges:
+                total_weight += self.edge_weights.get(edge, 0)
+            self.energy = total_weight + 20
+            self.max_energy = self.energy
+
+    def _generate_clues_prim(self):
+        """
+        Original logic moved here.
         Generate clues using Prim's Algorithm to create a connected region.
         """
         # 1. Build Graph of Cells for Prim's
@@ -334,13 +313,6 @@ class GameState:
                 
         self.solution_edges = solution_edges
         
-        if self.game_mode == "expert":
-            total_weight = 0
-            for edge in self.solution_edges:
-                total_weight += self.edge_weights.get(edge, 0)
-            self.energy = total_weight + 20
-            self.max_energy = self.energy
-
     def save_game(self, filename="savegame.bin"):
         """
         Compresses undo stack using Huffman Coding and saves to binary file.
@@ -380,7 +352,8 @@ class GameState:
             "solution_edges": getattr(self, "solution_edges", set()),
             "energy": self.energy,
             "energy_cpu": self.energy_cpu,
-            "turn": self.turn
+            "turn": self.turn,
+            "generator_type": getattr(self, "generator_type", "prim")
         }
         
         try:
@@ -585,3 +558,38 @@ class GameState:
             self.game_over = True
             self.winner = "Stalemate"
             self.message = "GAME OVER! No valid moves left. Stalemate."
+
+    def clone_for_simulation(self):
+        """
+        Creates a lightweight copy of the GameState for simulation purposes.
+        Only copies essential data (graph, clues, settings).
+        Does NOT copy UI bindings, undo stack, or existing solver state.
+        """
+        # Create new instance
+        # We pass None for strategies to start clean, then set them manually if needed
+        new_state = GameState(
+            rows=self.rows, 
+            cols=self.cols, 
+            difficulty=self.difficulty, 
+            game_mode=self.game_mode, 
+            solver_strategy=self.solver_strategy,
+            generator_type=self.generator_type
+        )
+        
+        # Copy Board State
+        new_state.graph.edges = self.graph.edges.copy()
+        new_state.graph.vertices = self.graph.vertices # Reference is fine, immutable tuples
+        new_state.clues = self.clues.copy()
+        new_state.edge_weights = self.edge_weights.copy()
+        new_state.solution_edges = self.solution_edges.copy() if hasattr(self, "solution_edges") else set()
+        
+        # Settings
+        new_state.energy = self.energy
+        new_state.energy_cpu = self.energy_cpu
+        new_state.turn = self.turn
+        
+        # We do NOT copy the 'cpu' solver instance. 
+        # The simulation service will instantiate its own solvers on this new state.
+        new_state.cpu = None 
+        
+        return new_state

@@ -59,9 +59,11 @@ class MainWindow(tk.Tk):
         self.clear_content()
         StatsPage(self.content_area, self.show_home).pack(expand=True, fill=tk.BOTH)
 
-    def start_game(self, rows, cols, difficulty, game_mode):
+    def start_game(self, rows, cols, difficulty, game_mode, solver_strategy=None, generator_type="prim"):
         self.clear_content()
-        game_state = GameState(rows, cols, difficulty, game_mode)
+        # UI wiring only: store/forward selected strategy.
+        # For now, all strategies still use Greedy internally.
+        game_state = GameState(rows, cols, difficulty, game_mode, solver_strategy=solver_strategy, generator_type=generator_type)
         GamePage(self.content_area, game_state, self.show_home).pack(expand=True, fill=tk.BOTH)
 
     def show_help(self):

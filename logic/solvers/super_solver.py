@@ -62,7 +62,10 @@ class ProfileDPSolver:
             
             next_states = {}
             
-            for profile, edges in current_states.items():
+            for profile, edges in sorted(
+                current_states.items(),
+                key=lambda item: item[0].profile_data,
+            ):
                 # Try all valid edge configurations for this cell (r, c)
                 # For a square cell, we have 4 edges: Top, Bottom, Left, Right.
                 # However, Top and Left might interact with previous cells.
@@ -86,7 +89,10 @@ class ProfileDPSolver:
         final_level = dp_states.get(n, {})
         valid_solutions = []
         
-        for profile, edges in final_level.items():
+        for profile, edges in sorted(
+            final_level.items(),
+            key=lambda item: item[0].profile_data,
+        ):
             # In a loop puzzle, the final profile usually implies no "dangling" ends 
             # crossing the boundary of the processed region, unless they match the global boundary.
             valid_solutions.append(edges)
@@ -224,7 +230,7 @@ class ParallelDnCSolver:
         else:
             # Simple merge: Combine edge lists. 
             # Real Separator DP would check for consistency at the boundary.
-            merged = list(set(res_1 + res_2))
+            merged = sorted(set(res_1 + res_2))
             
         # 3. Cache
         self.separator_memo[boundary_key] = merged

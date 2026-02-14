@@ -1,0 +1,21 @@
+Initializing Simple 4x4 Test...
+Set Clues: {(1, 1): 2, (1, 2): 2, (2, 1): 2, (2, 2): 2, (0, 1): 1, (0, 2): 1, (1, 0): 1, (1, 3): 1, (2, 0): 1, (2, 3): 1, (3, 1): 1, (3, 2): 1, (0, 0): 0, (0, 3): 0, (3, 0): 0, (3, 3): 0}
+Solving...
+Starting D&C Solve...
+Solving Q1: rows 0-2, cols 0-2
+  > Found 5 valid region states.
+Solving Q2: rows 0-2, cols 2-4
+  > Found 5 valid region states.
+Solving Q3: rows 2-4, cols 0-2
+  > Found 5 valid region states.
+Solving Q4: rows 2-4, cols 2-4
+  > Found 5 valid region states.
+Merged Top Half: 1 states.
+Merged Bottom Half: 1 states.
+Merged Full Grid: 1 states.
+Candidate Analysis (1 total):
+  Loop Counts: {1: 1}
+  Rejected due to Open Ends (with loops=1): 0
+Solution found with 8 edges.
+PASS: Found solution with 8 edges.
+{((1, 1), (2, 1)), ((1, 2), (1, 3)), ((2, 3), (3, 3)), ((3, 2), (3, 3)), ((2, 1), (3, 1)), ((1, 3), (2, 3)), ((3, 1), (3, 2)), ((1, 1), (1, 2))}

@@ -1,128 +1,429 @@
-# Loopy DAA Project - Phase 2 Architecture Design
+Perfect. Below is your **formal upgraded Design Document** in clean copy-paste academic format.
 
-## 1. Overview
-Phase 2 introduces a "Hybrid" architecture combining **Divide & Conquer (D&C)** and **Dynamic Programming (DP)**. The goal is to parallelize the core solver, introduce a campaign mode with procedural generation, and provide real-time visualization and benchmarking.
+It is written in a proper submission style suitable for DAA course evaluation.
 
----
-
-## 2. Hybrid Algorithm Logic: Scaling to Higher Orders
-This architecture solves N × N grids efficiently by combining D&C's structural decomposition with DP's local optimization.
-
-### 2.1. The "Divide": Isolating Complexity
-- **Recursive Decomposition**: A large grid (e.g., 16 × 16) is recursively split into 4 quadrants (8 × 8 → 4 × 4) using **Divide & Conquer**. 
-- **Effect**: This reduces the effective search space. Instead of solving one massive problem with 2^256 states, we solve multiple independent smaller problems.
-
-### 2.2. The "Conquer": DP Base Cases
-- **Leaf Node Efficiency**: At the leaf level (4 × 4 sectors), standard backtracking is still too slow if repeated thousands of times.
-- **Bitmask DP**: We use **Dynamic Programming** to solve these leaves. 
-    - **State Definition**: `dp(mask, boundary_profile)`.
-    - **Pre-computation**: For a given set of boundary edges (profile), the DP calculates valid internal loop segments immediately without recursion.
-    - **Caching**: Common boundary patterns are memoized.
-
-### 2.3. The "Combine": Stitching Solutions
-- **Merge Step**: The `ParallelDnCSolver` takes the fast DP results from the leaves and "stitches" them.
-- **Conflict Resolution**: If Quadrant A's right edge doesn't match Quadrant B's left edge, the branch is pruned immediately at the D&C level, avoiding deep invalid searches.
-
-**Summary**: D&C handles the *global* structure (parallelizable), while DP handles the *local* microstructure (deterministic and fast). This allows scaling to board sizes that would freeze a standard solver.
+No code included. Only architecture, algorithms, theory, and integration plan.
 
 ---
 
-## 3. Module Design Specifications
+# DESIGN DOCUMENT
 
-### 3.1. The Parallel Solver Engine
-**Directory**: `logic/solvers/`
+# Slitherlink (Loopy) Game Solver
 
-#### Class: `ParallelDnCSolver`
-Uses `concurrent.futures` to solve sub-quadrants in separate threads.
-- **Algorithm**: Divide & Conquer (Parallel)
-- **Key Methods**:
-  - `solve(grid: Grid) -> Solution`: Main entry point. Divides grid into quadrants.
-  - `_solve_quadrant(sub_grid: Grid) -> Future[Solution]`: Submits a quadrant task to the thread pool.
-  - `merge_solutions(top_left, top_right, bottom_left, bottom_right) -> Solution`: Combines sub-solutions.
-
-#### Class: `BitmaskDPSolver`
-Base-case solver for small (e.g., 4x4) grids to ensure 100% accuracy at the recursion leaves.
-- **Algorithm**: Dynamic Programming (Bitmask)
-- **Key Methods**:
-  - `solve_small_grid(grid: Grid) -> Solution`: Solves a small grid using DP state transitions.
-  - `get_state(mask: int, profile: List[int]) -> int`: Returns DP table value for a boundary profile.
-
-#### Class: `SolverManager`
-Manages the solving process, allowing pause/resume/stop functionality.
-- **Key Methods**:
-  - `start_solving()`: Initializes the `ParallelDnCSolver`.
-  - `pause()`: Suspends thread execution (using synchronization primitives).
-  - `resume()`: Resumes execution.
-  - `stop()`: Terminates all threads safely.
-
-### 3.2. The Game Mode Engine
-**Directory**: `logic/campaign/`
-
-#### Class: `Knapsack01Logic`
-Logic for "Campaign Mode". Players select edges to match a specific target sum.
-- **Algorithm**: Dynamic Programming (0/1 Knapsack)
-- **Key Methods**:
-  - `calculate_optimal_selection(edges: List[Edge], target_sum: int) -> List[Edge]`: Returns the set of edges that sum to `target_sum`.
-  - `validate_selection(player_selection: List[Edge], target_sum: int) -> bool`: Checks if player's move is valid.
-
-#### Class: `RecursiveLevelGenerator`
-Procedurally generates puzzle maps using D&C.
-- **Algorithm**: Divide & Conquer
-- **Key Methods**:
-  - `generate_level(size: int, difficulty: int) -> Grid`: Top-level generator.
-  - `_generate_sector(size: int) -> Grid`: Recursively generates a valid sub-sector.
-  - `stitch_sectors(sectors: List[Grid]) -> Grid`: Combines sectors ensuring boundary consistency.
-
-### 3.3. The Visualizer & Analyst
-**Directory**: `ui/visualization/`
-
-#### Class: `RecursionOverlay`
-Draws "Cut Lines" on the board to visualize the D&C process.
-- **Key Methods**:
-  - `draw_cut_lines(canvas: Canvas, depth: int)`: Renders division lines based on recursion depth.
-  - `update_progress(thread_id: int, status: str)`: Updates visual cues based on thread activity (thread-safe).
-
-#### Class: `DashboardUI`
-Tabs for live performance comparison.
-- **Key Methods**:
-  - `render_graph(sequential_data: List[float], parallel_data: List[float])`: Plots execution time comparison.
-  - `update_metrics(cpu_usage: float, active_threads: int)`: Displays real-time system stats.
+## Using Greedy, Divide & Conquer, and Dynamic Programming
 
 ---
 
-## 4. File Structure
-```
-root/
-├── logic/
-│   ├── solvers/
-│   │   ├── parallel_solver.py
-│   │   ├── bitmask_solver.py
-│   │   └── solver_manager.py
-│   ├── campaign/
-│   │   ├── knapsack_logic.py
-│   │   └── level_generator.py
-│   └── ...
-├── ui/
-│   ├── visualization/
-│   │   ├── recursion_overlay.py
-│   │   └── dashboard_ui.py
-│   └── ...
-└── ...
-```
+# 1. Project Title
+
+**Comparative Implementation of Slitherlink Solver Using Greedy, Divide & Conquer, and Dynamic Programming Techniques**
 
 ---
 
-## 5. Complexity Analysis: Recurrence Relations
+# 2. Project Objective
 
-### Sequential Divide & Conquer
-In the standard sequential approach, the problem is divided into 4 sub-problems of size `n/2` (for a 2D grid), plus the overhead of splitting and merging (`O(n)`).
+The objective of this project is to design and implement the Slitherlink (Loopy) puzzle game using multiple algorithmic paradigms from Design and Analysis of Algorithms (DAA), namely:
 
-**T(n) = 4T(n/2) + O(n)**
-- **Master Theorem Case**: a=4, b=2, d=1. Since a > b^d (4 > 2^1), complexity is dominated by leaves: O(n^(log_2 4)) = O(n^2).
+* Greedy Strategy
+* Divide and Conquer
+* Dynamic Programming
 
-### Parallel Divide & Conquer
-In the parallel approach, if we assume infinite processors (or sufficiently many threads), the 4 sub-problems are solved simultaneously. The time complexity is determined by the *slowest* branch (one sub-problem) plus the merge overhead.
+The system will allow the user to select the solving strategy before selecting the difficulty mode. Based on the chosen strategy, the CPU will solve the puzzle and generate hints accordingly.
 
-**T(n) = T(n/2) + O(n)**
-- **Master Theorem Case**: a=1, b=2, d=1. Since a < b^d (1 < 2^1), complexity is dominated by the root work: O(n).
-- **Note**: In practice, limited cores mean we don't achieve perfect scaling, but the critical path is significantly reduced.
+The project aims to:
+
+1. Demonstrate practical applications of algorithm paradigms.
+2. Compare algorithm performance experimentally.
+3. Provide strategy-based hint generation.
+4. Extend the game into a research-oriented solver comparison platform.
+
+---
+
+# 3. Problem Description
+
+## 3.1 Slitherlink Overview
+
+Slitherlink is a logic puzzle played on a rectangular grid of cells. Each cell may contain a number from 0 to 3 indicating how many of its four surrounding edges must be part of the final loop.
+
+Constraints:
+
+* The solution must form a single continuous loop.
+* No branches are allowed.
+* The loop must satisfy all numeric constraints.
+
+---
+
+# 4. Existing System Overview
+
+The current implementation supports:
+
+* Difficulty-based modes
+* Greedy solving strategy
+* Constraint sorting mechanism
+* Basic hint generation
+* CPU-based automatic solving
+
+The solver primarily uses:
+
+* Local rule-based constraint satisfaction
+* Greedy edge selection
+* Sorted priority of cells
+
+Limitations:
+
+* No alternative algorithm paradigms
+* No performance comparison
+* No global optimization techniques
+* No state reuse mechanisms
+
+---
+
+# 5. Proposed System Upgrade
+
+The upgraded system will introduce:
+
+1. Strategy Selection before game start
+2. Three distinct solver paradigms:
+
+   * Greedy
+   * Divide & Conquer
+   * Dynamic Programming
+3. Strategy-specific hint engine
+4. Performance comparison module
+5. Optional hybrid strategy
+6. Solver visualization module
+7. Puzzle generator using DP validation
+
+---
+
+# 6. Updated System Architecture
+
+## 6.1 Game Flow
+
+Step 1: Strategy Selection
+
+* Greedy
+* Divide & Conquer
+* Dynamic Programming
+* Hybrid (Optional Advanced Mode)
+
+Step 2: Mode Selection
+
+* Easy
+* Medium
+* Hard
+
+Step 3: Game Execution
+
+* CPU executes selected algorithm
+* Moves generated
+* Hints generated according to strategy
+
+---
+
+## 6.2 Architectural Design
+
+Game Controller
+→ Strategy Selector
+→ Solver Engine Interface
+  → Greedy Solver
+  → Divide & Conquer Solver
+  → DP Solver
+→ Hint Generator
+→ Performance Analyzer
+→ Visualization Module
+
+---
+
+# 7. Algorithmic Implementations
+
+---
+
+# 7.1 Greedy Strategy (Baseline)
+
+Approach:
+
+* Evaluate each cell independently
+* Prioritize highly constrained cells (0s and 3s)
+* Sort constraints
+* Apply deterministic local rules
+* Iteratively fill edges
+
+Characteristics:
+
+* Local optimal decisions
+* Fast execution
+* May require backtracking in complex cases
+
+Time Complexity: Approximately O(n²)
+
+---
+
+# 7.2 Divide & Conquer Implementation
+
+Divide & Conquer is implemented by spatial decomposition of the grid.
+
+## 7.2.1 Grid Partitioning Method
+
+Algorithm:
+
+1. If grid size ≤ threshold (e.g., 2x2), solve directly.
+2. Divide grid into four quadrants.
+3. Recursively solve each quadrant.
+4. Merge solutions by resolving boundary edge conflicts.
+5. Ensure loop consistency during merge.
+
+Recurrence:
+
+T(n) = 4T(n/2) + merge cost
+
+Approximate complexity: O(n²)
+
+---
+
+## 7.2.2 Constraint Clustering Method
+
+Instead of geometric splitting:
+
+1. Identify highly constrained regions.
+2. Form independent clusters.
+3. Recursively solve clusters.
+4. Merge overlapping edge configurations.
+
+---
+
+## 7.2.3 Recursive Loop Builder
+
+1. Start from a candidate edge.
+2. Expand loop recursively.
+3. If conflict detected, backtrack.
+4. Solve remaining unvisited regions recursively.
+
+---
+
+## 7.2.4 D&C Hint Generation
+
+Hints are derived from:
+
+* Solved sub-regions
+* Boundary merge deductions
+* Conflict resolution insights
+
+Example hint:
+
+"Top-left quadrant is fully determined; edge (2,3) must be selected."
+
+---
+
+# 7.3 Dynamic Programming Implementation
+
+Dynamic Programming will be implemented without dividing the grid spatially. It operates on global state reuse.
+
+---
+
+## 7.3.1 State-Based Memoization DP
+
+State representation includes:
+
+* Edge configuration
+* Constraint satisfaction counts
+* Loop connectivity information
+
+DP(state):
+
+* If state already computed → reuse
+* Otherwise compute and store
+
+This avoids recomputing identical partial configurations.
+
+---
+
+## 7.3.2 Row-by-Row Bitmask DP
+
+Each row is represented as a bitmask describing edge selections.
+
+State:
+
+dp[row][mask][component_state]
+
+Where:
+
+* mask = horizontal edge configuration
+* component_state = loop connectivity information
+
+Transition:
+
+* Check compatibility with previous row
+* Validate numeric constraints
+
+Time Complexity: O(rows × 2^columns)
+
+This demonstrates state compression DP.
+
+---
+
+## 7.3.3 Cell-Wise Constraint DP
+
+State:
+
+DP(cell_index, current_edge_state)
+
+At each cell:
+
+* Try valid edge combinations
+* Move forward
+* Store intermediate states
+
+This avoids repeated evaluation of same configurations.
+
+---
+
+## 7.3.4 Loop Validation DP
+
+To ensure single loop property:
+
+Maintain:
+
+* Connected component count
+* Edge count
+* Open endpoints
+
+Only accept states satisfying:
+
+* Exactly one connected component
+* No premature closed loops
+
+---
+
+# 8. Hybrid Strategy (Advanced Feature)
+
+Hybrid Mode:
+
+1. Apply Greedy until no progress.
+2. Switch to DP for global resolution.
+
+Benefits:
+
+* Faster than pure DP
+* More accurate than pure Greedy
+
+---
+
+# 9. Puzzle Generator Module
+
+Steps:
+
+1. Generate a complete valid loop.
+2. Derive numeric constraints.
+3. Remove some constraints.
+4. Use DP solver to verify uniqueness.
+5. Assign difficulty based on solver complexity.
+
+---
+
+# 10. Performance Analysis Module
+
+Metrics collected:
+
+* Execution time
+* Number of states explored
+* Memory usage
+* Backtracking count
+* DP memo hits
+
+Comparison table generated after solving.
+
+---
+
+# 11. Visualization Module
+
+Visualizes:
+
+* D&C recursion tree
+* DP state transitions
+* Memoization hits
+* Loop growth animation
+
+Purpose:
+
+* Educational demonstration
+* Academic clarity
+
+---
+
+# 12. Data Structures
+
+* Grid matrix
+* Edge matrix
+* Bitmask arrays
+* Hash maps (memoization)
+* Disjoint Set (loop validation)
+* Stack (recursion simulation)
+
+---
+
+# 13. Theoretical Analysis
+
+Slitherlink is NP-Complete.
+
+Comparison:
+
+Greedy:
+
+* Heuristic
+* Fast but not guaranteed optimal
+
+Divide & Conquer:
+
+* Recursive decomposition
+* Reduces spatial complexity
+
+Dynamic Programming:
+
+* Exploits overlapping subproblems
+* Uses memoization
+* Reduces recomputation
+
+Hybrid:
+
+* Combines local heuristics with global optimization
+
+---
+
+# 14. Expected Outcomes
+
+After upgrade, the system will:
+
+1. Provide multiple algorithmic paradigms.
+2. Demonstrate comparative performance.
+3. Support research-level experimentation.
+4. Include puzzle generation capability.
+5. Include strategy-based hints.
+
+This transforms the project from a simple game into an algorithmic study platform.
+
+---
+
+# 15. Future Scope
+
+* Parallel DP implementation
+* Machine learning-based heuristic
+* Difficulty auto-scaling
+* Cloud-based benchmarking
+* Competitive AI mode
+
+---
+
+# 16. Conclusion
+
+The upgraded Slitherlink project will serve as:
+
+* A practical demonstration of DAA paradigms
+* A comparative algorithm analysis tool
+* An interactive puzzle-solving system
+* An academic-grade research demonstration project
+
+The integration of Divide & Conquer and Dynamic Programming significantly enhances the theoretical depth and implementation complexity of the system.
+
+---
+

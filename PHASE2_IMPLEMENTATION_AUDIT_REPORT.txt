@@ -1,0 +1,230 @@
+﻿PHASE-2 ALGORITHM IMPLEMENTATION AUDIT REPORT
+Project: Loopy_SimonTatham_Games
+Audit Date: 2026-02-13
+Mode: Static code audit + targeted reproducibility checks
+Constraint respected: Solver logic not modified
+
+Scope Reviewed
+- logic/solvers/dynamic_programming_solver.py
+- logic/solvers/advanced_dp_solver.py
+- logic/solvers/divide_conquer_solver.py
+- logic/solvers/greedy_solver.py
+- logic/greedy_cpu.py
+- logic/solvers/super_solver.py
+- logic/game_state.py
+- ui/strategy_store.py
+- ui/pages.py
+- logic/analysis_mode.py
+
+============================================================
+Section A - DP Verification
+============================================================
+A1. Is Dynamic Programming actually implemented?
+- YES (pure DP) in logic/solvers/dynamic_programming_solver.py.
+- Core DP engine is _run_dp(...) with frontier-state transitions.
+  Evidence: logic/solvers/dynamic_programming_solver.py:397
+
+A2. Where is DP table?
+- dp table is explicitly allocated as:
+  dp = [collections.defaultdict(list) for _ in range(rows + 1)]
+  Evidence: logic/solvers/dynamic_programming_solver.py:416
+
+A3. What is the state definition?
+- State tuple:
+  (h_mask, comps_tuple, has_closed_loop)
+  Evidence: logic/solvers/dynamic_programming_solver.py:406
+- Meaning:
+  - h_mask: horizontal-edge bitmask on current row boundary
+  - comps_tuple: normalized connected-component/open-end signature on frontier
+  - has_closed_loop: whether one closed loop has already formed
+
+A4. Is memoization used?
+- No top-down memo cache is used.
+- This is bottom-up tabulation DP (table-based reuse), not recursive memoization.
+
+A5. Are overlapping subproblems reused?
+- YES. Multiple transitions that reach the same state are merged under same dp key.
+  Evidence: logic/solvers/dynamic_programming_solver.py:702
+- Next layer iterates unique states, reusing computed frontier summaries.
+
+A6. Is backtracking avoided?
+- Transition phase: mostly yes (forward DP tabulation).
+- Solution reconstruction: NO, a recursive backtrack over parent pointers is used.
+  Evidence: logic/solvers/dynamic_programming_solver.py:720
+- Interpretation: no guess/revert on board state, but traceback recursion is present.
+
+A7. DP state compression approach
+- Row-frontier compression via bitmask + normalized component signature.
+  Evidence: logic/solvers/dynamic_programming_solver.py:406, 462, 691
+
+A8. DP weaknesses observed
+- No memo-hit accounting despite analysis metrics model expecting it.
+  Evidence: logic/analysis_mode.py:31
+- Type annotation mismatch (helper signature is not edge-typed correctly) is present but runtime-safe due postponed annotations.
+  Evidence: logic/solvers/dynamic_programming_solver.py:387
+
+============================================================
+Section B - D&C Verification
+============================================================
+B1. Is Divide & Conquer actually implemented?
+- Partially, in two places:
+  1) Heuristic recursive D&C solver: logic/solvers/divide_conquer_solver.py
+  2) Advanced DP+D&C solver: logic/solvers/advanced_dp_solver.py
+
+B2. Where is spatial decomposition performed?
+- divide_conquer_solver: recursive quadrant split by mid row/col.
+  Evidence: logic/solvers/divide_conquer_solver.py:180
+- advanced_dp_solver: one-level 4-quadrant split in full-solution and hint pipelines.
+  Evidence: logic/solvers/advanced_dp_solver.py:920, 288
+
+B3. How is grid partitioned?
+- Four quadrants using (mid_r, mid_c): TL, TR, BL, BR.
+  Evidence: logic/solvers/divide_conquer_solver.py:190
+  Evidence: logic/solvers/advanced_dp_solver.py:920
+
+B4. How are regions merged?
+- divide_conquer_solver: boundary line scan + cell heuristics (not state merge).
+  Evidence: logic/solvers/divide_conquer_solver.py:206, 479
+- advanced_dp_solver: explicit horizontal then vertical seam merges of region states.
+  Evidence: logic/solvers/advanced_dp_solver.py:975, 989, 1003
+  Evidence: logic/solvers/advanced_dp_solver.py:1600, 1781
+
+B5. Is there a recurrence structure?
+- divide_conquer_solver has recursive region recurrence with quadrant descent:
+  T(n) = 4T(n/2) + boundary_check(n)
+  Evidence: logic/solvers/divide_conquer_solver.py:168, 197
+- advanced_dp_solver is not fully recursive D&C over size levels; it performs one decomposition level then merges.
+
+B6. How is boundary state compatibility enforced?
+- advanced_dp_solver enforces seam compatibility by:
+  - exact seam mask match (v_right_mask == v_left_mask, h_bottom_mask == h_top_mask)
+  - seam vertex degree parity and <=2 checks
+  - UF-based component stitching and signature normalization
+  Evidence: logic/solvers/advanced_dp_solver.py:1616, 1654, 1672, 1688
+  Evidence: logic/solvers/advanced_dp_solver.py:1797, 1835, 1853, 1869
+
+B7. D&C weaknesses observed
+- Standalone divide_conquer_solver is not wired as active runtime strategy in GameState.
+  'divide_and_conquer' is remapped to 'greedy'.
+  Evidence: logic/game_state.py:44
+- UI strategy store also remaps divide_and_conquer to greedy.
+  Evidence: ui/strategy_store.py:21
+- Merge in divide_conquer_solver is heuristic boundary checking, not DP-compatible state merge.
+
+============================================================
+Section C - Correctness of Integration
+============================================================
+C1. Runtime strategy routing correctness
+- Active CPU strategies in GameState are:
+  - greedy
+  - dynamic_programming
+  - advanced_dp
+  Evidence: logic/game_state.py:48
+- divide_and_conquer class exists but is not selected from standard strategy key.
+
+C2. DP + D&C integration correctness (AdvancedDPSolver)
+- Positive:
+  - Region decomposition + state merge architecture is real.
+  - Seam compatibility checks are real.
+- Critical caveat:
+  - Region "DP" is actually recursive enumeration/backtracking, not table DP.
+  Evidence: logic/solvers/advanced_dp_solver.py:1095, 1193, 1503
+- Additional contradiction:
+  - File header claims "No backtracking. Deterministic DP transitions."
+  - Implementation includes recursive backtracking and random fallback.
+  Evidence: logic/solvers/advanced_dp_solver.py:13
+  Evidence: logic/solvers/advanced_dp_solver.py:151, 177
+
+C3. Hidden DFS backtracking detection
+- PRESENT in advanced_dp_solver region solver.
+  Evidence: logic/solvers/advanced_dp_solver.py:1191, 1503
+- Pure DP solver uses traceback recursion only for solution reconstruction.
+  Evidence: logic/solvers/dynamic_programming_solver.py:720
+
+C4. Guess-and-revert logic detection
+- Advanced region solver explores guessed edge combinations branch-by-branch.
+- It avoids explicit revert by copying sets each branch.
+  Evidence: logic/solvers/advanced_dp_solver.py:1577, 1593
+- Verdict: guess branching present; explicit in-place revert absent.
+
+C5. Solution-comparison hint logic detection
+- PRESENT.
+- Pure DP compares edge frequency across all DP solutions to force include/exclude hints.
+  Evidence: logic/solvers/dynamic_programming_solver.py:151, 164, 171
+- Advanced DP compares compatible merged states and common seam edges.
+  Evidence: logic/solvers/advanced_dp_solver.py:401, 409, 447
+
+C6. Non-deterministic behavior detection
+- PRESENT in AdvancedDPSolver fallback via random.choice.
+  Evidence: logic/solvers/advanced_dp_solver.py:151, 177
+- Reproducibility check showed multiple distinct fallback moves on same state.
+  Observed: 16 unique moves in 20 fallback calls.
+- Greedy path uses random branch to choose sorting algorithm family.
+  Evidence: logic/greedy_cpu.py:102, 108
+
+C7. Additional integration weaknesses
+- ui/pages.py text says strategy options still use greedy internally, but GameState does instantiate DP/Advanced DP.
+  Evidence: ui/pages.py:123
+  Evidence: logic/game_state.py:48
+- super_solver.py is largely skeleton/prototype and not integrated into runtime CPU selection.
+  Evidence: logic/solvers/super_solver.py:77, 207
+
+============================================================
+Section D - Complexity Analysis
+============================================================
+D1. Greedy
+- Candidate generation: O(E * validator_cost)
+- Scoring: O(E)
+- Knapsack filter: O(E log E)
+- Sorting step: O(E^2) for small/medium candidate counts, O(E log E) for large counts.
+  Evidence: logic/greedy_cpu.py:93, 97, 101, 106
+  Evidence: daa/greedy_algos.py:44
+
+D2. Pure DP (State Compression)
+- Let W = cols, R = rows, S_r = reachable DP states at row r.
+- Transition cost approximately:
+  O(sum_r (S_r * 2^W * W))
+- Space approximately:
+  O(sum_r S_r) for stored layers/parents (implementation stores parent lists).
+  Evidence: logic/solvers/dynamic_programming_solver.py:416, 489, 506, 535
+
+D3. Advanced DP + D&C
+- Region solve currently behaves like recursive exhaustive enumeration with pruning.
+  Rough upper bound per region is exponential in region cells (branching over edge decisions).
+  Evidence: logic/solvers/advanced_dp_solver.py:1564
+- Merge phases are pairwise compatibility joins with seam checks:
+  O(sum_buckets |L_b|*|R_b|*seam_width)
+  Evidence: logic/solvers/advanced_dp_solver.py:1618, 1623, 1634, 1800, 1804, 1815
+
+D4. Recurrence relation (implemented structure)
+- Decomposition/merge equation (advanced solver):
+  Full = MergeV( MergeH(Q1, Q2), MergeH(Q3, Q4) )
+  where Qi are per-quadrant state sets.
+  Evidence: logic/solvers/advanced_dp_solver.py:975, 989, 1003
+- Region fill recurrence (actual local solver behavior):
+  F(cell_i, E) = union over feasible local edge decisions of F(cell_{i+1}, E U decision)
+  with clue-based pruning.
+  Evidence: logic/solvers/advanced_dp_solver.py:1569, 1593
+
+============================================================
+Section E - Recommendations
+============================================================
+E1. Paradigm correctness confirmation
+- Greedy: Correctly implemented as local heuristic optimizer.
+- Pure DP: Correctly implemented as row-state compression DP.
+- DP + D&C: PARTIALLY correct architecture (decompose + merge + seam constraints), but region core is backtracking enumeration, not pure DP-table region solver.
+- Standalone DivideConquerSolver: implemented but currently bypassed by strategy routing.
+
+E2. Highest-priority weaknesses
+1) Advanced solver claim/implementation mismatch ("No backtracking" vs actual recursive backtracking).
+2) Non-deterministic random fallback in Advanced solver.
+3) divide_and_conquer strategy path not active in GameState.
+4) Duplicate _recursive_region_fill definition and pseudo-code remnants create maintainability/audit risk.
+5) DP memo-hit metrics are modeled but not implemented.
+
+E3. Defense-readiness status
+- Pure DP evidence is strong and defensible.
+- Advanced DP+D&C is defensible as "state-merge decomposition with recursive local enumeration", not as strict full-DP local solver.
+- If strict academic claim is "DP + D&C without backtracking", current code does not satisfy that claim.
+
+END OF REPORT
