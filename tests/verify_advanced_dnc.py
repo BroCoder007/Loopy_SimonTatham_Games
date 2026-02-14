@@ -20,7 +20,7 @@ def test_corner_3():
     if "Corner 3" in game.cpu.explain_last_move():
         print("PASS: Corner 3 logic triggered.")
     else:
-        print("WARN: Corner 3 logic NOT triggered (fallback or generic logic?).")
+        print("WARN: Corner 3 logic NOT triggered (backup path or generic logic?).")
 
 def test_adjacent_3s():
     print("\n--- Test: Adjacent 3s (3-3) ---")

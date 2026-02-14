@@ -69,7 +69,7 @@ class GreedyCPU:
                 knapsack_items_map.append(i)
                 valid_indices.append(i)
         
-        # If no positive moves, fallback to raw candidates (desperation)
+        # If no positive moves, use raw candidates directly (desperation)
         if not weights:
             final_candidates = raw_candidates
         else:
@@ -85,7 +85,7 @@ class GreedyCPU:
                 original_idx = knapsack_items_map[idx]
                 final_candidates.append(raw_candidates[original_idx])
                 
-            # If knapsack selected nothing (rare), fallback
+            # If knapsack selected nothing (rare), use direct selection
             if not final_candidates:
                 final_candidates = raw_candidates
 

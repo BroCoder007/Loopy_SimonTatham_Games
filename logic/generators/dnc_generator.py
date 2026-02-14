@@ -71,8 +71,8 @@ class DivideAndConquerPuzzleGenerator:
                  print("[Generator] Invalid loop structure (disconnected or crossing). Retrying...")
 
         if not success:
-            print("[Generator] DBG: Failed to generate valid puzzle after max attempts. Fallback to simple loop.")
-            self._generate_fallback_simple()
+            print("[Generator] DBG: Failed to generate valid puzzle after max attempts. Backup to simple loop.")
+            self._generate_backup_simple()
 
         return self.clues, self.solution_edges
 
@@ -415,9 +415,9 @@ class DivideAndConquerPuzzleGenerator:
             
         return False
 
-    def _generate_fallback_simple(self):
+    def _generate_backup_simple(self):
         """
-        Fallback: Simple huge rectangle if D&C fails too many times.
+        Backup: Simple huge rectangle if D&C fails too many times.
         """
         edges = set()
         r_min, r_max = 0, self.rows

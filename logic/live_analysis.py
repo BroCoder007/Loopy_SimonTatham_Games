@@ -2,6 +2,7 @@
 import time
 import threading
 import concurrent.futures
+import copy
 from typing import Dict, Any, List, Optional
 from logic.game_state import GameState
 from logic.solvers.greedy_solver import GreedySolver
@@ -23,20 +24,41 @@ class LiveAnalysisService:
         Returns a dictionary with the analysis results.
         Safe to call from UI thread (spawns internal threads/futures).
         """
-        # 1. Clone State (Fast, In-Memory)
-        cloned_state = self.game_state.clone_for_simulation()
+        # 1. Build independent simulation states (one per thread/solver)
+        greedy_state = self._create_isolated_simulation_state()
+        dnc_state = self._create_isolated_simulation_state()
+        dp_state = self._create_isolated_simulation_state()
+
+        # Debug safety assertions: no shared simulation graph objects.
+        assert id(greedy_state.graph) != id(dnc_state.graph)
+        assert id(greedy_state.graph) != id(dp_state.graph)
+        assert id(dnc_state.graph) != id(dp_state.graph)
+
+        # Additional mutable-container isolation checks.
+        assert id(greedy_state.graph.edges) != id(dnc_state.graph.edges)
+        assert id(greedy_state.graph.edges) != id(dp_state.graph.edges)
+        assert id(dnc_state.graph.edges) != id(dp_state.graph.edges)
+        assert id(greedy_state.graph.vertices) != id(dnc_state.graph.vertices)
+        assert id(greedy_state.graph.vertices) != id(dp_state.graph.vertices)
+        assert id(dnc_state.graph.vertices) != id(dp_state.graph.vertices)
+        assert id(greedy_state.clues) != id(dnc_state.clues)
+        assert id(greedy_state.clues) != id(dp_state.clues)
+        assert id(dnc_state.clues) != id(dp_state.clues)
+        assert id(greedy_state.solution_edges) != id(dnc_state.solution_edges)
+        assert id(greedy_state.solution_edges) != id(dp_state.solution_edges)
+        assert id(dnc_state.solution_edges) != id(dp_state.solution_edges)
         self.move_counter += 1
         current_move_num = self.move_counter
         
         # 2. Define Simulation Tasks Wrapper methods
         def run_greedy_task():
-             return self._run_greedy(cloned_state)
+             return self._run_greedy(greedy_state)
              
         def run_dp_task():
-             return self._run_dp(cloned_state)
+             return self._run_dp(dp_state)
              
         def run_dnc_task():
-             return self._run_dnc(cloned_state)
+             return self._run_dnc(dnc_state)
 
         # 3. Execute in Parallel with Timeout
         results = {
@@ -83,6 +105,26 @@ class LiveAnalysisService:
         # Append to history in the MAIN game state (not the clone)
         self.game_state.live_analysis_table.append(results)
         return results
+
+    def _create_isolated_simulation_state(self) -> GameState:
+        """
+        Build a thread-local simulation state with no shared mutable references.
+        """
+        state = self.game_state.clone_for_simulation()
+
+        # Ensure graph is deeply isolated and adjacency is consistent with edges.
+        state.graph = self.game_state.graph.copy()
+
+        # Ensure no shared mutable containers from source state.
+        state.clues = copy.deepcopy(self.game_state.clues)
+        state.edge_weights = copy.deepcopy(self.game_state.edge_weights)
+        state.solution_edges = copy.deepcopy(getattr(self.game_state, "solution_edges", set()))
+
+        # If DSU/cache-like structures exist, isolate them as well.
+        if hasattr(self.game_state, "dsu"):
+            state.dsu = copy.deepcopy(self.game_state.dsu)
+
+        return state
 
     def _run_greedy(self, state_clone: GameState):
         start = time.time()

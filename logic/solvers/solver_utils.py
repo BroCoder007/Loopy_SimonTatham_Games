@@ -212,7 +212,7 @@ class BoundaryProfile:
                 if val:
                     mask |= (1 << i)
         except TypeError:
-            # Fallback if profile data isn't boolean-like integers
+            # Backup path if profile data isn't boolean-like integers
             pass
         return mask
 

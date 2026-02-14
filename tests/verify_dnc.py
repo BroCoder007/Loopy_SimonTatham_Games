@@ -28,8 +28,8 @@ def test_base_case():
     else:
         print("FAIL: No move found for corner 3.")
 
-def test_fallback():
-    print("\n--- Test 2: Fallback to Greedy ---")
+def test_backup_path():
+    print("\n--- Test 2: Backup to Greedy ---")
     # Empty 5x5 grid. D&C might not find anything deterministic without constraints.
     game = GameState(rows=5, cols=5, difficulty="Custom", game_mode="vs_cpu", solver_strategy="divide_conquer")
     game.clues = {} # No clues
@@ -39,10 +39,10 @@ def test_fallback():
     print(f"Move found: {move}")
     print(f"Explanation: {solver.explain_last_move()}")
     
-    if "Fallback" in solver.explain_last_move() or "Greedy" in solver.explain_last_move():
-        print("PASS: Fallback triggered.")
+    if "Backup" in solver.explain_last_move() or "Greedy" in solver.explain_last_move():
+        print("PASS: Backup path triggered.")
     else:
-        print("WARN: Fallback not explicitly mentioned (or D&C found a move?).")
+        print("WARN: Backup path not explicitly mentioned (or D&C found a move?).")
 
 def test_merge_logic():
     print("\n--- Test 3: Merge Logic ---")
@@ -75,7 +75,7 @@ def test_merge_logic():
 if __name__ == "__main__":
     try:
         test_base_case()
-        test_fallback()
+        test_backup_path()
         test_merge_logic()
     except Exception as e:
         print(f"ERROR: {e}")

@@ -498,7 +498,7 @@ class GamePage(tk.Frame):
     def _render_hint_explanation(self):
         """
         Render the hint explanation panel safely.
-        If explanation is missing, show a friendly fallback (must never crash gameplay).
+        If explanation is missing, show a friendly backup message (must never crash gameplay).
         """
         try:
             text = (self._last_hint_explanation or "").strip()

@@ -44,9 +44,9 @@ def test_clues_generation(rows=5, cols=5, difficulty="Medium"):
     for node, deg in degree.items():
         if deg != 2:
             print(f"FAIL: Node {node} has degree {deg} in solution!")
-            # We don't assert here because fallback might produce simple loops, 
+            # We don't assert here because backup logic might produce simple loops, 
             # but D&C should strictly produce valid loops.
-            # If fallback triggered, it might be a single box.
+            # If backup path triggered, it might be a single box.
             
     # 3. Verify Connectivity (Single Component)
     if solution_edges:
@@ -74,8 +74,8 @@ def test_clues_generation(rows=5, cols=5, difficulty="Medium"):
 
     print("PASS: Generation completes without error.")
 
-def test_fallback_mechanism():
-    print("Testing Fallback Mechanism...")
+def test_backup_mechanism():
+    print("Testing Backup Mechanism...")
     # Trying to force a fail might be hard without mocking, 
     # but we can try a very small grid where D&C might struggle or degenerate
     test_clues_generation(3, 3, "Easy")
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         test_clues_generation(5, 5, "Medium")
         test_clues_generation(7, 7, "Hard")
         test_clues_generation(10, 10, "Hard")
-        test_fallback_mechanism()
+        test_backup_mechanism()
         print("\nALL TESTS PASSED")
     except Exception as e:
         print(f"\nTEST FAILED: {e}")

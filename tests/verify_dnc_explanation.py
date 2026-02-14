@@ -7,10 +7,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from logic.game_state import GameState
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 
-def test_explanation_fallback():
-    print("\n--- Test Explanation: Fallback ---")
+def test_explanation_backup():
+    print("\n--- Test Explanation: Backup Path ---")
     game = GameState(rows=5, cols=5, difficulty="Custom", game_mode="vs_cpu", solver_strategy="divide_conquer")
-    game.clues = {} # Empty, forces fallback
+    game.clues = {} # Empty, forces backup path
     
     # Simulate UI call flow
     move = game.cpu.solve(game)
@@ -46,5 +46,5 @@ def test_explanation_dnc():
         print(f"FAIL: Strategy is {info['strategy']}")
 
 if __name__ == "__main__":
-    test_explanation_fallback()
+    test_explanation_backup()
     test_explanation_dnc()
