@@ -13,7 +13,6 @@ Manages:
 import os
 import random
 import pickle
-import heapq
 from collections import Counter
 from logic.graph import Graph
 from logic.validators import is_valid_move, check_win_condition
@@ -22,7 +21,7 @@ from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
 from logic.generators.dnc_generator import DivideAndConquerPuzzleGenerator
 from logic.statistics import StatisticsManager
-from daa.greedy_algos import prim_mst, dijkstra, huffman_coding
+from daa.greedy_algos import prim_mst, huffman_coding
 
 class GameState:
     def __init__(self, rows=5, cols=5, difficulty="Medium", game_mode="vs_cpu", solver_strategy=None, generator_type="prim"):
@@ -55,7 +54,7 @@ class GameState:
         self.energy_cpu = 100
         self.max_energy_cpu = 100
         
-        self._assign_weights()
+        self._initialize_edge_weights()
 
         if game_mode == "expert":
             self.turn = "Player 1 (Human)" # Expert is now PvE
@@ -93,17 +92,17 @@ class GameState:
             return "dynamic_programming"
         return "greedy"
 
-    def _assign_weights(self):
-        # Assign random weights to all potential edges
+    def _initialize_edge_weights(self):
+        # Deterministic uniform edge cost map.
         for r in range(self.rows + 1):
             for c in range(self.cols):
                 u, v = (r, c), (r, c+1)
-                self.edge_weights[tuple(sorted((u, v)))] = random.randint(1, 9)
+                self.edge_weights[tuple(sorted((u, v)))] = 1
                 
         for r in range(self.rows):
             for c in range(self.cols + 1):
                 u, v = (r, c), (r+1, c)
-                self.edge_weights[tuple(sorted((u, v)))] = random.randint(1, 9)
+                self.edge_weights[tuple(sorted((u, v)))] = 1
 
     def _calculate_required_energy(self):
         return 100 # Placeholder
@@ -180,100 +179,31 @@ class GameState:
 
     def get_hint(self):
         """
-        Robust Hint System (Consolidated):
-        1. "Loose Ends" Logic using Dijkstra's Algorithm (Refactored).
-           Find shortest path between two degree-1 vertices.
-        2. Fallback to Helper Logic (Solution edge suggestion).
+        Strategy-routed hint dispatcher.
+        Delegates hint generation to the currently selected solver strategy.
         """
-        
-        # 1. Dijkstra for Loose Ends (Any Mode provided hints are allowed)
-        # Find all vertices with degree 1
-        degree_ones = [node for node in self.graph.vertices if self.graph.get_degree(node) == 1]
-        
-        if len(degree_ones) >= 2:
-            # Attempt to connect two loose ends
-            start = degree_ones[0]
-            targets = set(degree_ones[1:])
-            
-            # Construct Weighted Graph of VALID MOVES using edge_weights
-            # Nodes: All grid vertices
-            # Edges: All valid, non-existing edges
-            dijkstra_graph = {}
-            
-            # We need to build the graph for all possible nodes
-            # A node u has neighbors v if (u,v) is valid add
-            
-            # Optimisation: Build on demand or full build? Full build is safer for Dijkstra.
-            for r in range(self.rows + 1):
-                for c in range(self.cols + 1):
-                    u = (r, c)
-                    dijkstra_graph[u] = []
-                    
-                    # Check potential neighbors
-                    candidates = []
-                    if r < self.rows: candidates.append(((r+1, c), tuple(sorted((u, (r+1, c)))))) # Down
-                    if r > 0: candidates.append(((r-1, c), tuple(sorted((u, (r-1, c)))))) # Up
-                    if c < self.cols: candidates.append(((r, c+1), tuple(sorted((u, (r, c+1)))))) # Right
-                    if c > 0: candidates.append(((r, c-1), tuple(sorted((u, (r, c-1)))))) # Left
-                    
-                    for neighbor, edge_key in candidates:
-                         if edge_key not in self.graph.edges:
-                             # Is it valid?
-                             valid, _ = is_valid_move(self.graph, u, neighbor, self.clues)
-                             if valid:
-                                 weight = self.edge_weights.get(edge_key, 1)
-                                 dijkstra_graph[u].append((neighbor, weight))
+        strategy = self._normalize_solver_strategy(self.solver_strategy)
 
-            # Run Dijkstra
-            dists, preds = dijkstra(dijkstra_graph, start)
-            
-            # Find closest target
-            min_dist = float('inf')
-            best_target = None
-            
-            for t in targets:
-                if dists.get(t, float('inf')) < min_dist:
-                    min_dist = dists[t]
-                    best_target = t
-            
-            if best_target and min_dist != float('inf'):
-                # Backtrack to find first move
-                curr = best_target
-                path = []
-                while curr != start and curr is not None:
-                    path.append(curr)
-                    curr = preds[curr]
-                
-                if path:
-                    first_step_node = path[-1] # The one connected to start
-                    return (start, first_step_node), "Hint: Connect this loose end!"
+        if strategy == "divide_conquer":
+            solver = self.cpu if isinstance(self.cpu, DivideConquerSolver) else DivideConquerSolver(self)
+        elif strategy == "dynamic_programming":
+            solver = self.cpu if isinstance(self.cpu, DynamicProgrammingSolver) else DynamicProgrammingSolver(self)
+        else:
+            solver = self.cpu if isinstance(self.cpu, GreedySolver) else GreedySolver(self)
 
-        # 2. Fallback: Suggest solution edge
-        if not self.solution_edges:
-            return None, "No solution available."
+        hint = solver.generate_hint(self)
+        if isinstance(hint, dict):
+            return hint
 
-        for edge in self.solution_edges:
-            if edge not in self.graph.edges:
-                u, v = edge
-                valid, reason = is_valid_move(self.graph, u, v, self.clues)
-                if valid:
-                    return (u, v), "Add this solution edge!"
-                else:
-                    # Check blockers
-                    for neighbor in self.graph.adj_list[u]:
-                        existing_edge = tuple(sorted((u, neighbor)))
-                        if existing_edge not in self.solution_edges:
-                            return existing_edge, "Remove this incorrect edge!"
-                    for neighbor in self.graph.adj_list[v]:
-                        existing_edge = tuple(sorted((v, neighbor)))
-                        if existing_edge not in self.solution_edges:
-                            return existing_edge, "Remove this incorrect edge!"
-                            
-        for edge in self.graph.edges:
-            if edge not in self.solution_edges:
-                return edge, "Remove this extra edge!"
-                
-        return None, "Puzzle solved?"
+        move, reason = (None, "No hint available.")
+        if isinstance(hint, tuple) and len(hint) == 2:
+            move, reason = hint
+
+        return {
+            "move": move,
+            "strategy": strategy.replace("_", " ").title(),
+            "explanation": reason if isinstance(reason, str) else "No hint available.",
+        }
 
     def _generate_clues(self):
         """

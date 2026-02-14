@@ -408,7 +408,7 @@ class AdvancedDPSolver(AbstractSolver):
         exclusion_candidates: List[Tuple[Edge, str]] = []
 
         # Cell-based deterministic rules.
-        for (r, c), clue in clues.items():
+        for (r, c), clue in sorted(clues.items()):
             cell_edges = [
                 tuple(sorted(((r, c), (r, c + 1)))),
                 tuple(sorted(((r + 1, c), (r + 1, c + 1)))),
@@ -638,7 +638,7 @@ class AdvancedDPSolver(AbstractSolver):
         current_edges = set(target.graph.edges)
         total = 1
 
-        for (r, c), clue in target.clues.items():
+        for (r, c), clue in sorted(target.clues.items()):
             cell_edges = [
                 tuple(sorted(((r, c), (r, c + 1)))),
                 tuple(sorted(((r + 1, c), (r + 1, c + 1)))),
@@ -791,7 +791,7 @@ class AdvancedDPSolver(AbstractSolver):
         merge_details = self._merge_stats.get('merge_details', [])
         
         # Get region with most states for context
-        max_region = max(region_stats.items(), key=lambda x: x[1]['states']) if region_stats else None
+        max_region = max(sorted(region_stats.items()), key=lambda x: x[1]['states']) if region_stats else None
         region_id, region_info = max_region if max_region else ("Q1", {'states': 0})
         
         # Find merge with highest pruning for boundary context
@@ -822,7 +822,7 @@ class AdvancedDPSolver(AbstractSolver):
         merge_details = self._merge_stats.get('merge_details', [])
         
         # Get region with most states for context
-        max_region = max(region_stats.items(), key=lambda x: x[1]['states']) if region_stats else None
+        max_region = max(sorted(region_stats.items()), key=lambda x: x[1]['states']) if region_stats else None
         region_id, region_info = max_region if max_region else ("Q1", {'states': 0})
         
         # Find merge with highest pruning for boundary context
@@ -879,7 +879,7 @@ class AdvancedDPSolver(AbstractSolver):
             seam_location = relevant_merge['seam_location']
             
             # Find region with most states for context
-            max_region = max(region_stats.items(), key=lambda x: x[1]['states']) if region_stats else None
+            max_region = max(sorted(region_stats.items()), key=lambda x: x[1]['states']) if region_stats else None
             region_id, region_info = max_region if max_region else ("Q1", {'states': 0})
             
             explanation = f"Using DP + Divide & Conquer: {region_id} generated {region_info['states']} boundary states. "
