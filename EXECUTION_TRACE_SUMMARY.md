@@ -28,7 +28,7 @@ Successfully added a unified research visualization layer with structured execut
 - **Updated**: Use `log_pure_dp_move()` helper with DP state count
 
 ### 4. `logic/solvers/advanced_dp_solver.py` (Updated)
-- **Modified**: Three trace calls in `solve()`, `decide_move()`, and fallback
+- **Modified**: Three trace calls in `solve()`, `decide_move()`, and backup path
 - **Updated**: Use `log_advanced_dp_move()` helper with region information
 - **Preserved**: Internal logging for region solving and merging operations
 

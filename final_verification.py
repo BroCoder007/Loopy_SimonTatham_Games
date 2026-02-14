@@ -66,7 +66,7 @@ def final_verification():
     
     hint = game.cpu.generate_hint()
     print(f'   Hint when out of moves: {hint.get("move") is not None}')
-    print(f'   Fallback strategy: {hint.get("strategy")}')
+    print(f'   Backup strategy: {hint.get("strategy")}')
     
     # Restore
     game.cpu.current_move_index = original_index
