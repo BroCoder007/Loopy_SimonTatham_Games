@@ -4,7 +4,7 @@ Pure Spatial Divide & Conquer Solver
 
 Design constraints implemented here:
 - No cross-calls to other solver classes
-- No fallback chaining
+- No backup chaining
 - No DP state compression
 - No beam search
 - No randomness
@@ -18,6 +18,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from logic.graph import Graph
+from logic.solvers.solver_errors import (
+    ControlledStateExplosionError,
+    STATE_SPACE_EXPLOSION_MESSAGE,
+    resolve_safe_limit,
+)
 from logic.solvers.solver_interface import AbstractSolver, HintPayload
 from logic.validators import check_win_condition, is_valid_move
 
@@ -77,6 +82,8 @@ class DivideConquerSolver(AbstractSolver):
         self.game_state = game_state
         self._last_explanation: str = ""
         self.BASE_CASE_SIZE = 3
+        self.SAFE_LIMIT = resolve_safe_limit(game_state, "dnc_safe_limit")
+        self._state_explosion_detected = False
 
         # Visualization exposure
         self.recursion_depth: int = 0
@@ -85,19 +92,35 @@ class DivideConquerSolver(AbstractSolver):
 
     # ---- Public solver interface ------------------------------------------
     def decide_move(self) -> Tuple[List[Any], Optional[Move]]:
+        if self._state_explosion_detected:
+            self._publish_state_explosion_message()
+            return [], None
         move = self.solve()
         return [], move
 
     def solve(self, board: Any = None):
-        move, reason = self._run_divide_and_conquer()
-        if move is not None:
+        if self._state_explosion_detected:
+            self._publish_state_explosion_message()
+            return None
+        try:
+            move, reason = self._run_divide_and_conquer()
+            if move is not None:
+                self._last_explanation = f"Using Divide & Conquer Strategy: {reason}"
+                return move
             self._last_explanation = f"Using Divide & Conquer Strategy: {reason}"
-            return move
-
-        self._last_explanation = f"Using Divide & Conquer Strategy: {reason}"
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
         return None
 
     def generate_hint(self, board: Any = None) -> HintPayload:
+        if self._state_explosion_detected:
+            self._publish_state_explosion_message()
+            return {
+                "move": None,
+                "strategy": "Divide & Conquer",
+                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
+            }
+
         is_human_turn = (
             self.game_state.game_mode in ["vs_cpu", "expert"]
             and self.game_state.turn == "Player 1 (Human)"
@@ -110,12 +133,20 @@ class DivideConquerSolver(AbstractSolver):
                 "explanation": "Hints are only available during your turn.",
             }
 
-        move, reason = self._run_divide_and_conquer()
-        return {
-            "move": move,
-            "strategy": "Divide & Conquer",
-            "explanation": f"Strategy: Divide & Conquer\nReason: {reason}",
-        }
+        try:
+            move, reason = self._run_divide_and_conquer()
+            return {
+                "move": move,
+                "strategy": "Divide & Conquer",
+                "explanation": f"Strategy: Divide & Conquer\nReason: {reason}",
+            }
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
+            return {
+                "move": None,
+                "strategy": "Divide & Conquer",
+                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
+            }
 
     def register_move(self, move: Move):
         self.game_state.last_cpu_move_info = {
@@ -130,6 +161,22 @@ class DivideConquerSolver(AbstractSolver):
     def explain_last_move(self) -> str:
         return self._last_explanation
 
+    def _publish_state_explosion_message(self) -> None:
+        self._last_explanation = STATE_SPACE_EXPLOSION_MESSAGE
+        self.game_state.message = STATE_SPACE_EXPLOSION_MESSAGE
+
+    def _handle_state_explosion(self) -> None:
+        self._state_explosion_detected = True
+        self._publish_state_explosion_message()
+
+    def _assert_config_limit(self, count: int, context: str) -> None:
+        if count > self.SAFE_LIMIT:
+            raise ControlledStateExplosionError(
+                safe_limit=self.SAFE_LIMIT,
+                observed=count,
+                context=context,
+            )
+
     # ---- Core D&C ----------------------------------------------------------
     def _run_divide_and_conquer(self) -> Tuple[Optional[Move], str]:
         if not self.game_state.clues:
@@ -137,6 +184,7 @@ class DivideConquerSolver(AbstractSolver):
 
         full_region = (0, 0, self.game_state.rows - 1, self.game_state.cols - 1)
         full_configs = self.solve_region(full_region, depth=0)
+        self._assert_config_limit(len(full_configs), "dnc_full_region_configs")
         if not full_configs:
             return None, "No globally valid single-loop completion exists for this board."
 
@@ -175,6 +223,7 @@ class DivideConquerSolver(AbstractSolver):
             self.merge_stage = "base_case"
             base = self._solve_region_base(region, depth)
             base = self._dedupe_configs(base)
+            self._assert_config_limit(len(base), f"dnc_base_{self._region_id(region)}")
             self._log_trace(
                 depth,
                 region,
@@ -194,6 +243,10 @@ class DivideConquerSolver(AbstractSolver):
         tr_cfg = self.solve_region(tr, depth + 1) if self._region_valid(tr) else []
         bl_cfg = self.solve_region(bl, depth + 1) if self._region_valid(bl) else []
         br_cfg = self.solve_region(br, depth + 1) if self._region_valid(br) else []
+        self._assert_config_limit(len(tl_cfg), f"dnc_region_{self._region_id(tl)}")
+        self._assert_config_limit(len(tr_cfg), f"dnc_region_{self._region_id(tr)}")
+        self._assert_config_limit(len(bl_cfg), f"dnc_region_{self._region_id(bl)}")
+        self._assert_config_limit(len(br_cfg), f"dnc_region_{self._region_id(br)}")
 
         top_half = self._merge_horizontal(
             tl_cfg,
@@ -204,6 +257,7 @@ class DivideConquerSolver(AbstractSolver):
             depth=depth,
             merge_stage="merge_horizontal_top",
         )
+        self._assert_config_limit(len(top_half), f"dnc_top_half_{self._region_id(region)}")
         bottom_half = self._merge_horizontal(
             bl_cfg,
             br_cfg,
@@ -213,6 +267,7 @@ class DivideConquerSolver(AbstractSolver):
             depth=depth,
             merge_stage="merge_horizontal_bottom",
         )
+        self._assert_config_limit(len(bottom_half), f"dnc_bottom_half_{self._region_id(region)}")
 
         merged = self._merge_vertical(
             top_half,
@@ -226,8 +281,10 @@ class DivideConquerSolver(AbstractSolver):
         )
 
         merged = self._dedupe_configs(merged)
+        self._assert_config_limit(len(merged), f"dnc_merged_{self._region_id(region)}")
         if self._is_full_board_region(region):
             merged = self._global_validate(merged)
+            self._assert_config_limit(len(merged), f"dnc_global_validated_{self._region_id(region)}")
             self._log_trace(
                 depth,
                 region,
@@ -328,6 +385,7 @@ class DivideConquerSolver(AbstractSolver):
                         component_snapshot=self._component_snapshot(region, on_edges),
                     )
                 )
+                self._assert_config_limit(len(solutions), f"dnc_base_append_{self._region_id(region)}")
                 return
 
             edge = edges[idx]
@@ -408,6 +466,8 @@ class DivideConquerSolver(AbstractSolver):
         merge_stage: str,
     ) -> List[RegionConfiguration]:
         self.merge_stage = merge_stage
+        self._assert_config_limit(len(left_regions), f"dnc_merge_h_left_{merge_stage}")
+        self._assert_config_limit(len(right_regions), f"dnc_merge_h_right_{merge_stage}")
         if not left_regions and not right_regions:
             return []
         if not left_regions:
@@ -433,8 +493,10 @@ class DivideConquerSolver(AbstractSolver):
                 )
                 if candidate is not None:
                     merged.append(candidate)
+                    self._assert_config_limit(len(merged), f"dnc_merge_h_accum_{merge_stage}")
 
         merged = self._dedupe_configs(merged)
+        self._assert_config_limit(len(merged), f"dnc_merge_h_result_{merge_stage}")
         self._log_trace(
             depth,
             self._merged_region_bounds(left_regions[0].region, right_regions[0].region),
@@ -455,6 +517,8 @@ class DivideConquerSolver(AbstractSolver):
         allow_closed_loop: bool,
     ) -> List[RegionConfiguration]:
         self.merge_stage = merge_stage
+        self._assert_config_limit(len(top_regions), f"dnc_merge_v_top_{merge_stage}")
+        self._assert_config_limit(len(bottom_regions), f"dnc_merge_v_bottom_{merge_stage}")
         if not top_regions and not bottom_regions:
             return []
         if not top_regions:
@@ -480,8 +544,10 @@ class DivideConquerSolver(AbstractSolver):
                 )
                 if candidate is not None:
                     merged.append(candidate)
+                    self._assert_config_limit(len(merged), f"dnc_merge_v_accum_{merge_stage}")
 
         merged = self._dedupe_configs(merged)
+        self._assert_config_limit(len(merged), f"dnc_merge_v_result_{merge_stage}")
         self._log_trace(
             depth,
             self._merged_region_bounds(top_regions[0].region, bottom_regions[0].region),
@@ -548,6 +614,7 @@ class DivideConquerSolver(AbstractSolver):
 
     # ---- Final validation and move selection -------------------------------
     def _global_validate(self, configs: List[RegionConfiguration]) -> List[RegionConfiguration]:
+        self._assert_config_limit(len(configs), "dnc_global_validate_input")
         valid: List[RegionConfiguration] = []
         for cfg in configs:
             graph = Graph(self.game_state.rows, self.game_state.cols)
@@ -556,6 +623,7 @@ class DivideConquerSolver(AbstractSolver):
             won, _ = check_win_condition(graph, self.game_state.clues)
             if won:
                 valid.append(cfg)
+                self._assert_config_limit(len(valid), "dnc_global_validate_valid")
         return self._dedupe_configs(valid)
 
     def _select_deterministic_configuration(self, full_configs: List[RegionConfiguration]) -> RegionConfiguration:

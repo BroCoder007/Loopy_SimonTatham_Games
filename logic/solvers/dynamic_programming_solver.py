@@ -6,8 +6,8 @@ Exact deterministic row-profile DP for Slitherlink.
 Core guarantees:
 - No recursion
 - No backtracking search
-- No fallback solver calls
-- No beam truncation / artificial DP state cap
+- No backup solver calls
+- No beam truncation (only a safety guard for state explosion)
 - Deterministic iteration order
 """
 
@@ -16,12 +16,18 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from logic.solvers.solver_interface import AbstractSolver, HintPayload
+from logic.solvers.solver_errors import (
+    ControlledStateExplosionError,
+    STATE_SPACE_EXPLOSION_MESSAGE,
+    resolve_safe_limit,
+)
 
 Vertex = Tuple[int, int]
 Edge = Tuple[Vertex, Vertex]
 Profile = Tuple[int, Tuple[int, ...], bool]  # (vertical_mask, component_labels, closed_flag)
 StateKey = Tuple[int, int, Tuple[int, ...], bool]  # (top_h_mask, vertical_mask, component_labels, closed_flag)
 ParentRef = Tuple[StateKey, Tuple[Edge, ...]]
+ParentLayer = Dict[StateKey, List[ParentRef]]
 
 
 class DynamicProgrammingSolver(AbstractSolver):
@@ -35,6 +41,7 @@ class DynamicProgrammingSolver(AbstractSolver):
         self.current_move_index = 0
         self._solution_computed = False
         self._final_solution_edges: Set[Edge] = set()
+        self._has_compatible_solution = True
 
         # Trace/analysis metrics
         self.dp_state_count = 0
@@ -43,12 +50,18 @@ class DynamicProgrammingSolver(AbstractSolver):
         self.state_count = 0
         self.total_states_generated = 0
         self.dp_debug_logging = True
+        self.SAFE_LIMIT = resolve_safe_limit(game_state, "dp_safe_limit")
+        self._state_explosion_detected = False
 
     def decide_move(self) -> Tuple[List[Tuple[Edge, int]], Optional[Edge]]:
         """
         Required by UI to simulate 'thinking' and return candidates + best move.
         DP solver uses precomputed deterministic solution moves.
         """
+        if self._state_explosion_detected:
+            self._publish_state_explosion_message()
+            return [], None
+
         is_cpu_turn = (
             self.game_state.game_mode in ["vs_cpu", "expert"]
             and self.game_state.turn == "Player 2 (CPU)"
@@ -57,79 +70,66 @@ class DynamicProgrammingSolver(AbstractSolver):
         if not is_cpu_turn:
             return [], None
 
-        if not self._solution_computed:
-            self._compute_full_solution()
+        try:
+            if not self._solution_computed:
+                self._compute_full_solution()
 
-        for _ in range(2):
-            idx = self._find_valid_solution_move_index()
-            if idx is not None:
-                self.current_move_index = idx
-                move_data = self.solution_moves[idx]
-                move = move_data["move"]
-                self.last_explanation = move_data.get("explanation", "Dynamic Programming precomputed move.")
+            for _ in range(2):
+                idx = self._find_valid_solution_move_index()
+                if idx is not None:
+                    self.current_move_index = idx
+                    move_data = self.solution_moves[idx]
+                    move = move_data["move"]
+                    self.last_explanation = move_data.get("explanation", "Dynamic Programming precomputed move.")
 
-                from logic.execution_trace import log_pure_dp_move
+                    from logic.execution_trace import log_pure_dp_move
 
-                log_pure_dp_move(
-                    move=move,
-                    explanation=self.last_explanation,
-                    dp_state_count=self.dp_state_count,
-                )
-                return [(move, 100)], move
+                    log_pure_dp_move(
+                        move=move,
+                        explanation=self.last_explanation,
+                        dp_state_count=self.dp_state_count,
+                    )
+                    return [(move, 100)], move
 
-            self._recompute_solution()
+                self._recompute_solution()
 
-        fallback_move, fallback_reason = self._find_fallback_move()
-        if fallback_move is not None:
-            self.last_explanation = fallback_reason
-            from logic.execution_trace import log_pure_dp_move
-
-            log_pure_dp_move(
-                move=fallback_move,
-                explanation=self.last_explanation,
-                dp_state_count=self.dp_state_count,
-            )
-            return [(fallback_move, 90)], fallback_move
-
-        self.last_explanation = "Dynamic Programming has completed all precomputed moves."
-        return [], None
+            self.last_explanation = "Dynamic Programming has completed all precomputed moves."
+            return [], None
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
+            return [], None
 
     def solve(self, board: Any = None) -> Optional[Edge]:
         """
         Returns the next move from precomputed deterministic solution.
         """
-        if not self._solution_computed:
-            self._compute_full_solution()
+        if self._state_explosion_detected:
+            self._publish_state_explosion_message()
+            return None
 
-        for _ in range(2):
-            idx = self._find_valid_solution_move_index()
-            if idx is not None:
-                self.current_move_index = idx
-                move_data = self.solution_moves[idx]
-                move = move_data["move"]
+        try:
+            if not self._solution_computed:
+                self._compute_full_solution()
 
-                from logic.execution_trace import log_pure_dp_move
+            for _ in range(2):
+                idx = self._find_valid_solution_move_index()
+                if idx is not None:
+                    self.current_move_index = idx
+                    move_data = self.solution_moves[idx]
+                    move = move_data["move"]
 
-                log_pure_dp_move(
-                    move=move,
-                    explanation=move_data.get("explanation", ""),
-                    dp_state_count=self.dp_state_count,
-                )
-                return move
+                    from logic.execution_trace import log_pure_dp_move
 
-            self._recompute_solution()
+                    log_pure_dp_move(
+                        move=move,
+                        explanation=move_data.get("explanation", ""),
+                        dp_state_count=self.dp_state_count,
+                    )
+                    return move
 
-        fallback_move, fallback_reason = self._find_fallback_move()
-        if fallback_move is not None:
-            self.last_explanation = fallback_reason
-            from logic.execution_trace import log_pure_dp_move
-
-            log_pure_dp_move(
-                move=fallback_move,
-                explanation=fallback_reason,
-                dp_state_count=self.dp_state_count,
-            )
-            return fallback_move
+                self._recompute_solution()
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
 
         return None
 
@@ -137,8 +137,13 @@ class DynamicProgrammingSolver(AbstractSolver):
         target = board if board is not None else self.game_state
         strategy_name = "Dynamic Programming (State Compression)"
 
-        if not self._solution_computed:
-            self._compute_full_solution()
+        if self._state_explosion_detected:
+            self._publish_state_explosion_message()
+            return {
+                "move": None,
+                "strategy": strategy_name,
+                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
+            }
 
         is_human_turn = (
             (self.game_state.game_mode in ["vs_cpu", "expert"] and self.game_state.turn == "Player 1 (Human)")
@@ -152,43 +157,51 @@ class DynamicProgrammingSolver(AbstractSolver):
                 "explanation": "Hints are only available during your turn.",
             }
 
-        if not self._final_solution_edges:
+        try:
+            if not self._solution_computed:
+                self._compute_full_solution()
+
+            if not self._has_compatible_solution:
+                return {
+                    "move": None,
+                    "strategy": strategy_name,
+                    "explanation": "No valid solutions found via exact profile DP.",
+                }
+
+            current_edges = set(target.graph.edges)
+
+            for i in range(self.current_move_index, len(self.solution_moves)):
+                move_data = self.solution_moves[i]
+                move = move_data["move"]
+
+                if move not in current_edges:
+                    from logic.validators import is_valid_move
+
+                    valid, _ = is_valid_move(target.graph, move[0], move[1], target.clues)
+                    if valid:
+                        return {
+                            "move": move,
+                            "strategy": strategy_name,
+                            "explanation": move_data.get(
+                                "explanation",
+                                "This edge is part of the exact DP solution path.",
+                            ),
+                        }
+
+            for edge in sorted(current_edges):
+                if edge not in self._final_solution_edges:
+                    return {
+                        "move": edge,
+                        "strategy": strategy_name,
+                        "explanation": self._generate_edge_removal_reasoning(edge, target),
+                    }
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
             return {
                 "move": None,
                 "strategy": strategy_name,
-                "explanation": "No valid solutions found via exact profile DP.",
+                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
             }
-
-        current_edges = set(target.graph.edges)
-
-        for i in range(self.current_move_index, len(self.solution_moves)):
-            move_data = self.solution_moves[i]
-            move = move_data["move"]
-
-            if i == self.current_move_index:
-                continue
-
-            if move not in current_edges:
-                from logic.validators import is_valid_move
-
-                valid, _ = is_valid_move(target.graph, move[0], move[1], target.clues)
-                if valid:
-                    return {
-                        "move": move,
-                        "strategy": strategy_name,
-                        "explanation": move_data.get(
-                            "explanation",
-                            "This edge is part of the exact DP solution path.",
-                        ),
-                    }
-
-        for edge in sorted(current_edges):
-            if edge not in self._final_solution_edges:
-                return {
-                    "move": edge,
-                    "strategy": strategy_name,
-                    "explanation": self._generate_edge_removal_reasoning(edge, target),
-                }
 
         return {
             "move": None,
@@ -233,78 +246,162 @@ class DynamicProgrammingSolver(AbstractSolver):
 
         return None
 
-    def _find_fallback_move(self) -> Tuple[Optional[Edge], str]:
-        """
-        Deterministic local fallback to avoid CPU stalling when queued solution moves are blocked.
-        """
-        from logic.validators import is_valid_move
-
-        current_edges = set(self.game_state.graph.edges)
-        target_edges = set(self._final_solution_edges)
-
-        # 1) Prefer adding a missing target edge if currently valid.
-        for edge in sorted(target_edges):
-            if edge in current_edges:
-                continue
-            valid, _ = is_valid_move(self.game_state.graph, edge[0], edge[1], self.game_state.clues)
-            if valid:
-                return edge, f"Fallback: add target edge {edge}."
-
-        # 2) Any valid add on the board.
-        for edge in sorted(self._get_all_potential_edges()):
-            if edge in current_edges:
-                continue
-            valid, _ = is_valid_move(self.game_state.graph, edge[0], edge[1], self.game_state.clues)
-            if valid:
-                return edge, f"Fallback: add valid edge {edge}."
-
-        return None, "No valid fallback move found."
-
     def _recompute_solution(self) -> None:
+        if self._state_explosion_detected:
+            return
         self._solution_computed = False
         self.current_move_index = 0
         self._compute_full_solution()
 
     def _compute_full_solution(self) -> None:
         """
-        Compute a full exact solution and store deterministic moves from current board to solution.
+        Compute one deterministic contradiction-based forced deduction.
         """
-        solutions = self._run_dp(self.game_state, limit=1)
-        if not solutions:
-            self._final_solution_edges = set()
+        forced = self._find_forced_deduction(self.game_state)
+        self.current_move_index = 0
+
+        if forced is None:
+            self._final_solution_edges = set(self.game_state.graph.edges)
             self.solution_moves = []
+            if not self.last_explanation:
+                self.last_explanation = "No deterministic DP contradiction-based deduction available."
             self._solution_computed = True
             return
 
-        computed_solution_edges = set(solutions[0])
-        self._final_solution_edges = computed_solution_edges
+        edge, is_inclusion, explanation = forced
+        next_edges = set(self.game_state.graph.edges)
+        if is_inclusion:
+            next_edges.add(edge)
+            ref = "forced_inclusion"
+        else:
+            next_edges.discard(edge)
+            ref = "forced_exclusion"
 
-        current_edges = set(self.game_state.graph.edges)
-        self.solution_moves = []
-
-        # Constructive ordering: add target edges first.
-        for edge in sorted(computed_solution_edges):
-            if edge not in current_edges:
-                self.solution_moves.append(
-                    {
-                        "move": edge,
-                        "explanation": f"Add edge {edge} - part of the exact profile-DP solution.",
-                        "dp_state_reference": "solution_edge",
-                    }
-                )
-
-        # Cleanup moves second.
-        for edge in sorted(current_edges):
-            if edge not in computed_solution_edges:
-                self.solution_moves.append(
-                    {
-                        "move": edge,
-                        "explanation": f"Remove edge {edge} - not part of the exact profile-DP solution.",
-                        "dp_state_reference": "incorrect_edge",
-                    }
-                )
-
+        self._final_solution_edges = next_edges
+        self.solution_moves = [
+            {
+                "move": edge,
+                "explanation": explanation,
+                "dp_state_reference": ref,
+            }
+        ]
+        self.last_explanation = explanation
         self._solution_computed = True
+
+    def _find_forced_deduction(self, target: Any) -> Optional[Tuple[Edge, bool, str]]:
+        """
+        Full contradiction-based deduction.
+
+        Returns:
+            (edge, is_inclusion, explanation) or None if no forced move exists.
+        """
+        all_potential_edges = self._get_all_potential_edges()
+        all_potential_set = set(all_potential_edges)
+        current_edges = set(edge for edge in target.graph.edges if edge in all_potential_set)
+
+        # Base compatible solution set respects currently ON edges.
+        all_solutions = self._compute_all_valid_solutions(target, forced_edges=current_edges)
+        if not all_solutions:
+            self._has_compatible_solution = False
+            self.last_explanation = "No valid profile-DP solutions remain consistent with current board edges."
+            return None
+        self._has_compatible_solution = True
+
+        forced_inclusions, forced_exclusions = self._compute_edge_intersections(
+            all_solutions=all_solutions,
+            current_edges=current_edges,
+            all_potential_edges=all_potential_edges,
+        )
+
+        if forced_inclusions:
+            edge = forced_inclusions[0]
+            return (
+                edge,
+                True,
+                f"Forced inclusion: edge {edge} appears in all {len(all_solutions)} compatible DP solutions.",
+            )
+
+        if forced_exclusions:
+            edge = forced_exclusions[0]
+            return (
+                edge,
+                False,
+                f"Forced exclusion: edge {edge} appears in no compatible DP solution.",
+            )
+
+        # No intersection move; use contradiction testing as oracle.
+        undecided_edges = sorted(edge for edge in all_potential_edges if edge not in current_edges)
+        for edge in undecided_edges:
+            assume_on = set(current_edges)
+            assume_on.add(edge)
+            on_solutions = self._run_dp(target, limit=1, forced_edges=assume_on)
+            if not on_solutions:
+                # Edge forced OFF, but absent edges are already OFF in this UI model.
+                continue
+
+            assume_off = {edge}
+            off_solutions = self._run_dp(
+                target,
+                limit=1,
+                forced_edges=current_edges,
+                forbidden_edges=assume_off,
+            )
+            if not off_solutions:
+                return (
+                    edge,
+                    True,
+                    f"Contradiction test: assuming {edge}=OFF yields no DP solution, so {edge} must be ON.",
+                )
+
+        self.last_explanation = "No contradiction-based forced DP move exists for current undecided edges."
+        return None
+
+    def _compute_all_valid_solutions(
+        self,
+        target: Any,
+        forced_edges: Optional[Set[Edge]] = None,
+        forbidden_edges: Optional[Set[Edge]] = None,
+    ) -> List[Set[Edge]]:
+        return self._run_dp(
+            target,
+            limit=None,
+            forced_edges=forced_edges,
+            forbidden_edges=forbidden_edges,
+        )
+
+    def _compute_edge_intersections(
+        self,
+        all_solutions: List[Set[Edge]],
+        current_edges: Set[Edge],
+        all_potential_edges: List[Edge],
+    ) -> Tuple[List[Edge], List[Edge]]:
+        if not all_solutions:
+            return [], []
+        from logic.validators import is_valid_move
+
+        common_edges = set(all_solutions[0])
+        seen_edges: Set[Edge] = set()
+        for sol in all_solutions:
+            common_edges.intersection_update(sol)
+            seen_edges.update(sol)
+
+        forced_inclusions: List[Edge] = []
+        for edge in sorted(common_edges):
+            if edge in current_edges:
+                continue
+
+            valid, _ = is_valid_move(self.game_state.graph, edge[0], edge[1], self.game_state.clues)
+            if valid:
+                forced_inclusions.append(edge)
+
+        forced_exclusions: List[Edge] = []
+        for edge in sorted(all_potential_edges):
+            if edge in seen_edges:
+                continue
+            if edge in current_edges:
+                forced_exclusions.append(edge)
+
+        return forced_inclusions, forced_exclusions
 
     def _get_all_potential_edges(self) -> List[Edge]:
         edges: List[Edge] = []
@@ -315,184 +412,6 @@ class DynamicProgrammingSolver(AbstractSolver):
             for c in range(self.cols + 1):
                 edges.append(tuple(sorted(((r, c), (r + 1, c)))))
         return edges
-
-    def _run_dp(self, target: Any, limit: Optional[int] = 1) -> List[Set[Edge]]:
-        """
-        Exact deterministic row-profile DP.
-
-        Public compatibility:
-        - Returns a list of edge-sets.
-        - `limit` controls output list length only.
-
-        Internals:
-        - No recursion, no search backtracking.
-        - Full reachable-state exploration (no beam/state truncation).
-        """
-        self.dp_state_count = 0
-        self.memo_hits = 0
-        self.current_row = 0
-        self.state_count = 0
-        self.total_states_generated = 0
-
-        rows = self.rows
-        cols = self.cols
-        clues = target.clues
-
-        clue_by_row: List[Dict[int, int]] = [dict() for _ in range(rows)]
-        for (r, c), val in sorted(clues.items()):
-            if 0 <= r < rows and 0 <= c < cols:
-                clue_by_row[r][c] = val
-
-        current_layer: Dict[StateKey, int] = {}
-
-        # Requested profile-level reachability table
-        dp_profiles: List[Dict[Profile, bool]] = [dict() for _ in range(rows + 1)]
-        for top_mask in range(1 << cols):
-            initial_labels = self._initial_frontier_labels(top_mask)
-            if initial_labels is None:
-                continue
-            state: StateKey = (top_mask, 0, initial_labels, False)
-            current_layer[state] = 1
-            dp_profiles[0][(0, initial_labels, False)] = True
-
-        parent_layers: List[Dict[StateKey, ParentRef]] = [dict() for _ in range(rows + 1)]
-        alt_parent_layers: List[Dict[StateKey, ParentRef]] = [dict() for _ in range(rows + 1)]
-
-        for r in range(rows):
-            self.current_row = r
-            self.state_count = len(current_layer)
-            self.dp_state_count += len(current_layer)
-            incoming_states = len(current_layer)
-            row_masks_tested = 0
-            row_states_accepted = 0
-            row_rejected = {
-                "cell_constraint": 0,
-                "vertex_degree": 0,
-                "premature_loop": 0,
-                "component_inconsistency": 0,
-            }
-
-            next_layer: Dict[StateKey, int] = {}
-            row_clues = clue_by_row[r]
-            is_last_row = r == rows - 1
-
-            for state in sorted(current_layer):
-                top_mask, vertical_mask, comp_labels, closed_flag = state
-                ways_to_state = current_layer[state]
-
-                if closed_flag and not is_last_row:
-                    continue
-
-                for bottom_mask in range(1 << cols):
-                    row_masks_tested += 1
-                    transition = self._transition_row(
-                        row=r,
-                        top_mask=top_mask,
-                        incoming_vertical_mask=vertical_mask,
-                        comp_labels=comp_labels,
-                        closed_flag=closed_flag,
-                        bottom_mask=bottom_mask,
-                        row_clues=row_clues,
-                        is_last_row=is_last_row,
-                        rejection_counts=row_rejected,
-                    )
-                    if transition is None:
-                        continue
-                    row_states_accepted += 1
-
-                    next_vertical_mask, next_labels, next_closed, row_edges = transition
-                    profile: Profile = (next_vertical_mask, next_labels, next_closed)
-                    next_key: StateKey = (bottom_mask, next_vertical_mask, next_labels, next_closed)
-
-                    self.total_states_generated += 1
-                    dp_profiles[r + 1][profile] = True
-
-                    if next_key not in next_layer:
-                        next_layer[next_key] = ways_to_state
-                        parent_layers[r + 1][next_key] = (state, row_edges)
-                    else:
-                        self.memo_hits += 1
-                        next_layer[next_key] += ways_to_state
-                        if next_key not in alt_parent_layers[r + 1]:
-                            alt_parent_layers[r + 1][next_key] = (state, row_edges)
-
-            if self.dp_debug_logging:
-                print(f"[DP DEBUG] Row {r}")
-                print(f"  incoming_states: {incoming_states}")
-                print(f"  horizontal_masks_tested: {row_masks_tested}")
-                print(f"  states_accepted: {row_states_accepted}")
-                print(f"  rejected_cell_constraint: {row_rejected['cell_constraint']}")
-                print(f"  rejected_vertex_degree: {row_rejected['vertex_degree']}")
-                print(f"  rejected_premature_loop: {row_rejected['premature_loop']}")
-                print(f"  rejected_component_inconsistency: {row_rejected['component_inconsistency']}")
-
-            current_layer = next_layer
-
-            if not current_layer:
-                self.state_count = 0
-                if self.dp_debug_logging:
-                    print(f"DP terminated at row {r + 1} — no valid states remain.")
-                return []
-
-        self.current_row = rows
-        self.state_count = len(current_layer)
-
-        final_states: List[Tuple[StateKey, Set[Edge]]] = []
-        total_solution_count = 0
-
-        for state in sorted(current_layer):
-            top_mask, vertical_mask, comp_labels, closed_flag = state
-            if vertical_mask != 0:
-                continue
-            if not closed_flag:
-                continue
-            if any(comp_labels):
-                continue
-
-            candidate_solution = self._reconstruct_solution_iterative(parent_layers, state)
-            if not self._is_valid_final_solution(candidate_solution, clues):
-                continue
-
-            # Deterministic final-state selection is by lexicographic state order.
-            final_states.append((state, candidate_solution))
-            total_solution_count += current_layer[state]
-
-        if not final_states:
-            return []
-
-        best_final_state, best_solution = final_states[0]
-
-        if limit is None or limit <= 1:
-            return [best_solution]
-
-        out: List[Set[Edge]] = [best_solution]
-
-        if total_solution_count > 1:
-            second_solution = None
-
-            for state, _ in final_states:
-                if state in alt_parent_layers[rows]:
-                    alt_solution = self._reconstruct_solution_iterative(
-                        parent_layers,
-                        state,
-                        alt_parent_layers=alt_parent_layers,
-                    )
-                    if alt_solution != best_solution and self._is_valid_final_solution(alt_solution, clues):
-                        second_solution = alt_solution
-                        break
-
-            if second_solution is None:
-                for _, state_solution in final_states:
-                    if state_solution != best_solution:
-                        second_solution = state_solution
-                        break
-
-            if second_solution is None:
-                second_solution = set(best_solution)
-
-            out.append(second_solution)
-
-        return out[:limit]
 
     def _is_valid_final_solution(self, edges: Set[Edge], clues: Dict[Tuple[int, int], int]) -> bool:
         """
@@ -854,6 +773,323 @@ class DynamicProgrammingSolver(AbstractSolver):
                 return f"Remove this edge because node {node} exceeds degree 2."
 
         return "Remove this edge because it is not part of the exact profile-DP solution."
+
+    def _run_dp(
+        self,
+        target: Any,
+        limit: Optional[int] = 1,
+        forced_edges: Optional[Set[Edge]] = None,
+        forbidden_edges: Optional[Set[Edge]] = None,
+    ) -> List[Set[Edge]]:
+        """
+        Exact deterministic row-profile DP with optional edge assumptions.
+        """
+        if limit is not None and limit <= 0:
+            return []
+
+        self.dp_state_count = 0
+        self.memo_hits = 0
+        self.current_row = 0
+        self.state_count = 0
+        self.total_states_generated = 0
+
+        rows = self.rows
+        cols = self.cols
+        clues = target.clues
+
+        normalized_forced = set(tuple(sorted(edge)) for edge in (forced_edges or set()))
+        normalized_forbidden = set(tuple(sorted(edge)) for edge in (forbidden_edges or set()))
+        if normalized_forced.intersection(normalized_forbidden):
+            return []
+
+        masks = self._build_row_constraint_masks(
+            forced_edges=normalized_forced,
+            forbidden_edges=normalized_forbidden,
+        )
+        if masks is None:
+            return []
+
+        top_ones, top_zeros, bottom_ones, bottom_zeros, vertical_ones, vertical_zeros = masks
+
+        clue_by_row: List[Dict[int, int]] = [dict() for _ in range(rows)]
+        for (r, c), val in sorted(clues.items()):
+            if 0 <= r < rows and 0 <= c < cols:
+                clue_by_row[r][c] = val
+
+        current_layer: Dict[StateKey, int] = {}
+        dp_profiles: List[Dict[Profile, bool]] = [dict() for _ in range(rows + 1)]
+
+        for top_mask in range(1 << cols):
+            if not self._mask_satisfies_constraints(top_mask, top_ones, top_zeros):
+                continue
+            initial_labels = self._initial_frontier_labels(top_mask)
+            if initial_labels is None:
+                continue
+            state: StateKey = (top_mask, 0, initial_labels, False)
+            current_layer[state] = 1
+            dp_profiles[0][(0, initial_labels, False)] = True
+            if len(current_layer) > self.SAFE_LIMIT:
+                raise ControlledStateExplosionError(
+                    safe_limit=self.SAFE_LIMIT,
+                    observed=len(current_layer),
+                    context="dp_initial_row",
+                )
+
+        parent_layers: List[ParentLayer] = [dict() for _ in range(rows + 1)]
+
+        for r in range(rows):
+            self.current_row = r
+            self.state_count = len(current_layer)
+            self.dp_state_count += len(current_layer)
+            incoming_states = len(current_layer)
+            if incoming_states > self.SAFE_LIMIT:
+                raise ControlledStateExplosionError(
+                    safe_limit=self.SAFE_LIMIT,
+                    observed=incoming_states,
+                    context=f"dp_row_{r}_incoming",
+                )
+
+            row_masks_tested = 0
+            row_states_accepted = 0
+            row_rejected = {
+                "cell_constraint": 0,
+                "vertex_degree": 0,
+                "premature_loop": 0,
+                "component_inconsistency": 0,
+            }
+
+            next_layer: Dict[StateKey, int] = {}
+            row_clues = clue_by_row[r]
+            is_last_row = r == rows - 1
+
+            for state in sorted(current_layer):
+                top_mask, vertical_mask, comp_labels, closed_flag = state
+                ways_to_state = current_layer[state]
+
+                if closed_flag and not is_last_row:
+                    continue
+
+                for bottom_mask in range(1 << cols):
+                    row_masks_tested += 1
+                    if not self._mask_satisfies_constraints(bottom_mask, bottom_ones[r], bottom_zeros[r]):
+                        continue
+
+                    transition = self._transition_row(
+                        row=r,
+                        top_mask=top_mask,
+                        incoming_vertical_mask=vertical_mask,
+                        comp_labels=comp_labels,
+                        closed_flag=closed_flag,
+                        bottom_mask=bottom_mask,
+                        row_clues=row_clues,
+                        is_last_row=is_last_row,
+                        rejection_counts=row_rejected,
+                    )
+                    if transition is None:
+                        continue
+
+                    next_vertical_mask, next_labels, next_closed, row_edges = transition
+                    if not self._mask_satisfies_constraints(next_vertical_mask, vertical_ones[r], vertical_zeros[r]):
+                        continue
+
+                    row_states_accepted += 1
+                    profile: Profile = (next_vertical_mask, next_labels, next_closed)
+                    next_key: StateKey = (bottom_mask, next_vertical_mask, next_labels, next_closed)
+
+                    self.total_states_generated += 1
+                    dp_profiles[r + 1][profile] = True
+
+                    if next_key not in next_layer:
+                        next_layer[next_key] = ways_to_state
+                        parent_layers[r + 1][next_key] = [(state, row_edges)]
+                        if len(next_layer) > self.SAFE_LIMIT:
+                            raise ControlledStateExplosionError(
+                                safe_limit=self.SAFE_LIMIT,
+                                observed=len(next_layer),
+                                context=f"dp_row_{r}_next_layer",
+                            )
+                    else:
+                        self.memo_hits += 1
+                        next_layer[next_key] += ways_to_state
+                        parent_layers[r + 1][next_key].append((state, row_edges))
+
+            if self.dp_debug_logging:
+                print(f"[DP DEBUG] Row {r}")
+                print(f"  incoming_states: {incoming_states}")
+                print(f"  horizontal_masks_tested: {row_masks_tested}")
+                print(f"  states_accepted: {row_states_accepted}")
+                print(f"  rejected_cell_constraint: {row_rejected['cell_constraint']}")
+                print(f"  rejected_vertex_degree: {row_rejected['vertex_degree']}")
+                print(f"  rejected_premature_loop: {row_rejected['premature_loop']}")
+                print(f"  rejected_component_inconsistency: {row_rejected['component_inconsistency']}")
+
+            current_layer = next_layer
+            if not current_layer:
+                self.state_count = 0
+                if self.dp_debug_logging:
+                    print(f"DP terminated at row {r + 1} - no valid states remain.")
+                return []
+
+        self.current_row = rows
+        self.state_count = len(current_layer)
+
+        final_states: List[StateKey] = []
+        for state in sorted(current_layer):
+            top_mask, vertical_mask, comp_labels, closed_flag = state
+            if vertical_mask != 0:
+                continue
+            if not closed_flag:
+                continue
+            if any(comp_labels):
+                continue
+            final_states.append(state)
+
+        if not final_states:
+            return []
+
+        out: List[Set[Edge]] = []
+        seen_signatures: Set[Tuple[Edge, ...]] = set()
+        for final_state in sorted(final_states):
+            stack: List[Tuple[int, StateKey, frozenset[Edge]]] = [(rows, final_state, frozenset())]
+            while stack:
+                row, state, edge_accumulator = stack.pop()
+                if row == 0:
+                    signature = tuple(sorted(edge_accumulator))
+                    if signature in seen_signatures:
+                        continue
+                    edge_set = set(edge_accumulator)
+                    if not self._is_valid_final_solution(edge_set, clues):
+                        continue
+                    seen_signatures.add(signature)
+                    out.append(edge_set)
+                    if limit is not None and len(out) >= limit:
+                        return out
+                    continue
+
+                parents = parent_layers[row].get(state, [])
+                for prev_state, row_edges in reversed(parents):
+                    stack.append((row - 1, prev_state, edge_accumulator.union(row_edges)))
+
+        return out
+
+    def _build_row_constraint_masks(
+        self,
+        forced_edges: Set[Edge],
+        forbidden_edges: Set[Edge],
+    ) -> Optional[Tuple[int, int, List[int], List[int], List[int], List[int]]]:
+        """
+        Convert edge assumptions into row-mask constraints.
+        """
+        potential_edges = set(self._get_all_potential_edges())
+        for edge in sorted(forced_edges.union(forbidden_edges)):
+            if edge not in potential_edges:
+                return None
+
+        top_ref = [0, 0]
+        bottom_ones = [0] * self.rows
+        bottom_zeros = [0] * self.rows
+        vertical_ones = [0] * self.rows
+        vertical_zeros = [0] * self.rows
+
+        for edge in sorted(forced_edges):
+            if not self._apply_constraint_edge(
+                edge=edge,
+                bit_value=1,
+                top_ref=top_ref,
+                bottom_ones=bottom_ones,
+                bottom_zeros=bottom_zeros,
+                vertical_ones=vertical_ones,
+                vertical_zeros=vertical_zeros,
+            ):
+                return None
+
+        for edge in sorted(forbidden_edges):
+            if not self._apply_constraint_edge(
+                edge=edge,
+                bit_value=0,
+                top_ref=top_ref,
+                bottom_ones=bottom_ones,
+                bottom_zeros=bottom_zeros,
+                vertical_ones=vertical_ones,
+                vertical_zeros=vertical_zeros,
+            ):
+                return None
+
+        top_ones, top_zeros = top_ref
+
+        if top_ones & top_zeros:
+            return None
+        for r in range(self.rows):
+            if bottom_ones[r] & bottom_zeros[r]:
+                return None
+            if vertical_ones[r] & vertical_zeros[r]:
+                return None
+
+        return top_ones, top_zeros, bottom_ones, bottom_zeros, vertical_ones, vertical_zeros
+
+    def _apply_constraint_edge(
+        self,
+        edge: Edge,
+        bit_value: int,
+        top_ref: List[int],
+        bottom_ones: List[int],
+        bottom_zeros: List[int],
+        vertical_ones: List[int],
+        vertical_zeros: List[int],
+    ) -> bool:
+        """
+        Map one edge constraint to the corresponding row bit.
+        """
+        u, v = edge
+        if u[0] == v[0]:
+            row = u[0]
+            col = min(u[1], v[1])
+            if row < 0 or row > self.rows or col < 0 or col >= self.cols:
+                return False
+            bit = 1 << col
+            if row == 0:
+                if bit_value == 1:
+                    top_ref[0] |= bit
+                else:
+                    top_ref[1] |= bit
+            else:
+                idx = row - 1
+                if bit_value == 1:
+                    bottom_ones[idx] |= bit
+                else:
+                    bottom_zeros[idx] |= bit
+            return True
+
+        col = u[1]
+        row = min(u[0], v[0])
+        if row < 0 or row >= self.rows or col < 0 or col > self.cols:
+            return False
+        bit = 1 << col
+        if bit_value == 1:
+            vertical_ones[row] |= bit
+        else:
+            vertical_zeros[row] |= bit
+        return True
+
+    def _mask_satisfies_constraints(self, mask: int, required_ones: int, required_zeros: int) -> bool:
+        if (mask & required_ones) != required_ones:
+            return False
+        if (mask & required_zeros) != 0:
+            return False
+        return True
+
+    def _publish_state_explosion_message(self) -> None:
+        self.last_explanation = STATE_SPACE_EXPLOSION_MESSAGE
+        self.game_state.message = STATE_SPACE_EXPLOSION_MESSAGE
+
+    def _handle_state_explosion(self) -> None:
+        self._state_explosion_detected = True
+        self._has_compatible_solution = False
+        self._final_solution_edges = set()
+        self.solution_moves = []
+        self.current_move_index = 0
+        self._solution_computed = True
+        self._publish_state_explosion_message()
 
 
 class _UnionFind:

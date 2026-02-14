@@ -114,8 +114,9 @@ class AdvancedDPSolver(AbstractSolver):
             
         # Check if solution exists
         if not self._final_solution_edges:
-            print("[AdvancedDPSolver] No solution found in _final_solution_edges. FALLBACK.")
-            return self._fallback_move()
+            print("[AdvancedDPSolver] No solution found in _final_solution_edges.")
+            self.last_explanation = "No precomputed Advanced DP move is available."
+            return [], None
 
         while self.current_move_index < len(self.solution_moves):
             move_data = self.solution_moves[self.current_move_index]
@@ -140,90 +141,14 @@ class AdvancedDPSolver(AbstractSolver):
                 self.current_move_index += 1
                 
         self.last_explanation = "No more moves."
-        print("[AdvancedDPSolver] No more moves in solution_moves. FALLBACK.")
-        return self._fallback_move()
-        
-    def _fallback_move(self):
-        """
-        Deterministic fallback strategy.
-        Prefers a compatible merged state with a deterministic tie-breaker.
-        """
-        from logic.validators import is_valid_move
-        print("[AdvancedDPSolver] Executing Fallback (Deterministic)")
-        
-        rows, cols = self.game_state.rows, self.game_state.cols
-        graph = self.game_state.graph
-        current_edges = set(graph.edges)
-
-        # Try state-guided deterministic fallback first.
-        compatible_states: List[RegionSolution] = []
-        try:
-            full_states = self._compute_full_merged_states_for_hint()
-            compatible_states = [
-                state for state in full_states if current_edges.issubset(state.edges)
-            ]
-        except Exception:
-            compatible_states = []
-
-        if compatible_states:
-            best_state = min(compatible_states, key=self._region_solution_sort_key)
-            for move in sorted(best_state.edges):
-                if move in current_edges:
-                    continue
-                valid, _ = is_valid_move(graph, move[0], move[1], self.game_state.clues)
-                if valid:
-                    self.last_explanation = "Fallback Strategy (Deterministic Compatible State)"
-
-                    from logic.execution_trace import log_advanced_dp_move
-                    log_advanced_dp_move(
-                        move=move,
-                        explanation=self.last_explanation,
-                        recursion_depth=0,
-                        region_id="Global"
-                    )
-                    return [(move, 50)], move
-        
-        all_moves = []
-        # Collect all possible adds
-        for r in range(rows + 1):
-            for c in range(cols):
-                u, v = (r, c), (r, c+1)
-                edge = tuple(sorted((u, v)))
-                if edge not in graph.edges:
-                    valid, _ = is_valid_move(graph, u, v, self.game_state.clues)
-                    if valid: all_moves.append(edge)
-                    
-        for r in range(rows):
-            for c in range(cols + 1):
-                u, v = (r, c), (r+1, c)
-                edge = tuple(sorted((u, v)))
-                if edge not in graph.edges:
-                    valid, _ = is_valid_move(graph, u, v, self.game_state.clues)
-                    if valid: all_moves.append(edge)
-                    
-        if all_moves:
-            move = sorted(all_moves)[0]
-            self.last_explanation = "Fallback Strategy (Deterministic Lexicographic)"
-            
-            from logic.execution_trace import log_advanced_dp_move
-            log_advanced_dp_move(
-                move=move,
-                explanation=self.last_explanation,
-                recursion_depth=0,
-                region_id="Global"
-            )
-            
-            return [(move, 50)], move
-            
+        print("[AdvancedDPSolver] No more moves in solution_moves.")
         return [], None
 
     def generate_hint(self, board: Any = None) -> HintPayload:
         """
-        Multi-layer hint system for Advanced DP presentation quality.
-        Layer 1: Local deterministic rules (clue and degree constraints).
-        Layer 2: Region boundary compatibility forced edges.
-        Layer 3: State-reduction heuristic hint (best narrowing move).
-        Layer 4: Fallback when no informative move is available.
+        Pure D&C deterministic hinting.
+        A hint is produced only if an undecided edge is forced by all
+        compatible merged region configurations.
         """
         target = board if board is not None else self.game_state
         
@@ -239,50 +164,55 @@ class AdvancedDPSolver(AbstractSolver):
                 "explanation": "Hints are only available during your turn."
             }
 
-        # Layer 1 - Local deterministic rules.
-        local_hint = self._find_local_deterministic_hint(target)
-        if local_hint is not None:
-            return local_hint
-
-        # Compute merged states once for Layer 2/3.
+        # Compute merged states.
         full_states = self._compute_full_merged_states_for_hint()
         if not full_states:
-            local_reduction_hint = self._find_state_reduction_hint([], target)
-            if local_reduction_hint is not None:
-                return local_reduction_hint
             return {
                 "move": None,
                 "strategy": "Dynamic Programming with Divide & Conquer Decomposition",
-                "explanation": "Layer 4 (Fallback): No strong deterministic deduction available under current decomposition."
+                "explanation": "No deterministic D&C deduction available."
             }
 
         required_edges = set(target.graph.edges)
         compatible_states = self._filter_states_by_required_edges(full_states, required_edges)
         if not compatible_states:
-            local_reduction_hint = self._find_state_reduction_hint([], target)
-            if local_reduction_hint is not None:
-                return local_reduction_hint
             return {
                 "move": None,
                 "strategy": "Dynamic Programming with Divide & Conquer Decomposition",
-                "explanation": "Layer 4 (Fallback): No strong deterministic deduction available under current decomposition."
+                "explanation": "No deterministic D&C deduction available."
             }
 
-        # Layer 2 - Region boundary forced moves.
-        boundary_hint = self._find_boundary_forced_hint(compatible_states, target)
-        if boundary_hint is not None:
-            return boundary_hint
+        total_states = len(compatible_states)
+        edge_frequency: Dict[Edge, int] = collections.Counter()
+        for state_edges in compatible_states:
+            for edge in state_edges:
+                edge_frequency[edge] += 1
 
-        # Layer 3 - State reduction heuristic hint.
-        reduction_hint = self._find_state_reduction_hint(compatible_states, target)
-        if reduction_hint is not None:
-            return reduction_hint
+        forced_edges: List[Edge] = []
+        for edge, count in sorted(edge_frequency.items()):
+            if count != total_states:
+                continue
+            if edge in required_edges:
+                continue
+            valid, _ = is_valid_move(target.graph, edge[0], edge[1], target.clues)
+            if valid:
+                forced_edges.append(edge)
 
-        # Layer 4 - Fallback.
+        if forced_edges:
+            edge = forced_edges[0]
+            return {
+                "move": edge,
+                "strategy": "Dynamic Programming with Divide & Conquer Decomposition",
+                "explanation": (
+                    f"Deterministic D&C: edge {edge} appears in all "
+                    f"{total_states} compatible merged region configurations."
+                )
+            }
+
         return {
             "move": None,
             "strategy": "Dynamic Programming with Divide & Conquer Decomposition",
-            "explanation": "Layer 4 (Fallback): No strong deterministic deduction available under current decomposition."
+            "explanation": "No deterministic D&C deduction available."
         }
 
     def explain_last_move(self) -> str:
@@ -395,84 +325,6 @@ class AdvancedDPSolver(AbstractSolver):
                 compatible_states.append(state.edges)
         return compatible_states
 
-    def _find_local_deterministic_hint(self, target) -> Optional[HintPayload]:
-        """
-        Layer 1:
-        Local deterministic clue/degree rules. Prioritizes inclusion hints.
-        """
-        graph = target.graph
-        clues = target.clues
-        current_edges = set(graph.edges)
-
-        inclusion_candidates: List[Tuple[Edge, str]] = []
-        exclusion_candidates: List[Tuple[Edge, str]] = []
-
-        # Cell-based deterministic rules.
-        for (r, c), clue in sorted(clues.items()):
-            cell_edges = [
-                tuple(sorted(((r, c), (r, c + 1)))),
-                tuple(sorted(((r + 1, c), (r + 1, c + 1)))),
-                tuple(sorted(((r, c), (r + 1, c)))),
-                tuple(sorted(((r, c + 1), (r + 1, c + 1)))),
-            ]
-            present = [e for e in cell_edges if e in current_edges]
-            absent = [e for e in cell_edges if e not in current_edges]
-
-            if clue == 0 and present:
-                exclusion_candidates.append((present[0], f"Cell {(r, c)} has clue 0, so all adjacent edges must be excluded."))
-
-            needed = clue - len(present)
-            if needed > 0 and needed == len(absent):
-                for edge in absent:
-                    valid, _ = is_valid_move(graph, edge[0], edge[1], clues)
-                    if valid:
-                        inclusion_candidates.append((edge, f"Cell {(r, c)} needs {clue} edges; all remaining undecided edges are forced."))
-
-        # Degree-2 continuation rule: degree-1 node with exactly one legal extension.
-        for node in graph.vertices:
-            if graph.get_degree(node) != 1:
-                continue
-            legal_extensions: List[Edge] = []
-            r, c = node
-            neighbors = []
-            if r > 0:
-                neighbors.append((r - 1, c))
-            if r < self.rows:
-                neighbors.append((r + 1, c))
-            if c > 0:
-                neighbors.append((r, c - 1))
-            if c < self.cols:
-                neighbors.append((r, c + 1))
-
-            for nb in neighbors:
-                edge = tuple(sorted((node, nb)))
-                if edge in current_edges:
-                    continue
-                valid, _ = is_valid_move(graph, edge[0], edge[1], clues)
-                if valid:
-                    legal_extensions.append(edge)
-
-            if len(legal_extensions) == 1:
-                inclusion_candidates.append((legal_extensions[0], f"Vertex {node} has degree 1 and only one legal continuation edge."))
-
-        if inclusion_candidates:
-            edge, reason = inclusion_candidates[0]
-            return {
-                "move": edge,
-                "strategy": "Dynamic Programming with Divide & Conquer Decomposition",
-                "explanation": f"Layer 1 (Local Deterministic Rules): {reason}"
-            }
-
-        if exclusion_candidates:
-            edge, reason = exclusion_candidates[0]
-            return {
-                "move": edge,
-                "strategy": "Dynamic Programming with Divide & Conquer Decomposition",
-                "explanation": f"Layer 1 (Local Deterministic Rules): {reason}"
-            }
-
-        return None
-
     def _find_boundary_forced_hint(self, compatible_states: List[Set[Edge]], target) -> Optional[HintPayload]:
         """
         Layer 2:
@@ -580,7 +432,7 @@ class AdvancedDPSolver(AbstractSolver):
 
     def _find_local_state_reduction_hint(self, target) -> Optional[HintPayload]:
         """
-        Layer 3 fallback:
+        Layer 3 local estimator:
         Local compatibility-count estimator when merged DP state set is empty.
         """
         current_edges = set(target.graph.edges)
