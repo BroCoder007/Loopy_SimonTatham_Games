@@ -32,6 +32,6 @@ Merged Top Half: 20 states.
 Merged Bottom Half: 112 states.
 Merged Full Grid: 2 states.
 [AdvancedDPSolver] No valid global solutions found.
-[AdvancedDPSolver] No solution found in _final_solution_edges. FALLBACK.
-[AdvancedDPSolver] Executing Fallback (Random Valid Move)
+[AdvancedDPSolver] No solution found in _final_solution_edges. BACKUP.
+[AdvancedDPSolver] Executing Backup (Random Valid Move)
 PASS: CPU decided move ((4, 1), (5, 1))

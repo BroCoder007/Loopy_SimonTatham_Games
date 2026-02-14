@@ -370,12 +370,17 @@ class GamePage(tk.Frame):
              self.game_state.message = "Analysis Complete. CPU deciding..."
              self.update_ui()
 
-        # 1. Decide
-        candidates, best_move = self.game_state.cpu.decide_move()
-        
+        # 1. Decide through hierarchical strategy controller.
+        best_move, strategy_source, solver_used, fallback_message = self.game_state.get_next_cpu_move()
+
         if best_move:
             # 2. Execute directly (Hidden thinking)
-            success = self.finalize_cpu_move(best_move)
+            success = self.finalize_cpu_move(
+                best_move,
+                strategy_override=strategy_source,
+                solver_used=solver_used,
+                fallback_message=fallback_message,
+            )
             if not success:
                 # Move failed, try again with next move
                 self.after(500, self.cpu_move)
@@ -383,33 +388,45 @@ class GamePage(tk.Frame):
         else:
             # No moves available, switch turn back to human
             if not self.game_state.game_over:
+                if strategy_source == "No moves available":
+                    self.game_state.message = "No CPU move available for this board state."
+                elif strategy_source == "DP (No deterministic move)":
+                    self.game_state.message = "DP has no deterministic move on this board state."
                 self.game_state.switch_turn()
                 self.update_ui()
             self.check_game_over()
 
-    def finalize_cpu_move(self, move, register_solver_move=True, strategy_override=None):
+    def finalize_cpu_move(self, move, register_solver_move=True, strategy_override=None, solver_used=None, fallback_message=None):
         u, v = move
         success = self.game_state.make_move(u, v, is_cpu=True)
         
         if not success:
             # Move failed, return False so CPU can try another move
             return False
-        
-        # Store CPU move information for explanation
-        if hasattr(self.game_state.cpu, "explain_last_move"):
-            explanation = self.game_state.cpu.explain_last_move()
-            strategy_label = strategy_override or self._get_strategy_display_name()
-            self.game_state.last_cpu_move_info = {
-                "move": move,
-                "explanation": explanation,
-                "strategy": strategy_label
-            }
-        
-        # Ensure move is registered for DP solver tracking
-        if register_solver_move and hasattr(self.game_state.cpu, "register_move"):
-            self.game_state.cpu.register_move(move)
+
+        active_solver = solver_used if solver_used is not None else self.game_state.cpu
+
+        # Ensure move is registered for solver-side state tracking.
+        if register_solver_move and hasattr(active_solver, "register_move"):
+            active_solver.register_move(move)
+
+        # Store CPU move information for explanation.
+        explanation = "No explanation available."
+        if hasattr(active_solver, "explain_last_move"):
+            explanation = active_solver.explain_last_move()
+
+        strategy_label = strategy_override or self._get_strategy_display_name()
+        self.game_state.last_cpu_move_info = {
+            "move": move,
+            "explanation": explanation,
+            "strategy": strategy_label
+        }
             
         play_sound("move")
+
+        if fallback_message and not self.game_state.game_over:
+            self.game_state.message = fallback_message
+
         self.update_ui()
         self.check_game_over()
         return True

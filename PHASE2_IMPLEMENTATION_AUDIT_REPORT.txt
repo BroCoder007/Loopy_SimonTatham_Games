@@ -131,7 +131,7 @@ C2. DP + D&C integration correctness (AdvancedDPSolver)
   Evidence: logic/solvers/advanced_dp_solver.py:1095, 1193, 1503
 - Additional contradiction:
   - File header claims "No backtracking. Deterministic DP transitions."
-  - Implementation includes recursive backtracking and random fallback.
+  - Implementation includes recursive backtracking and random backup.
   Evidence: logic/solvers/advanced_dp_solver.py:13
   Evidence: logic/solvers/advanced_dp_solver.py:151, 177
 
@@ -155,10 +155,10 @@ C5. Solution-comparison hint logic detection
   Evidence: logic/solvers/advanced_dp_solver.py:401, 409, 447
 
 C6. Non-deterministic behavior detection
-- PRESENT in AdvancedDPSolver fallback via random.choice.
+- PRESENT in AdvancedDPSolver backup via random.choice.
   Evidence: logic/solvers/advanced_dp_solver.py:151, 177
-- Reproducibility check showed multiple distinct fallback moves on same state.
-  Observed: 16 unique moves in 20 fallback calls.
+- Reproducibility check showed multiple distinct backup moves on same state.
+  Observed: 16 unique moves in 20 backup calls.
 - Greedy path uses random branch to choose sorting algorithm family.
   Evidence: logic/greedy_cpu.py:102, 108
 
@@ -217,7 +217,7 @@ E1. Paradigm correctness confirmation
 
 E2. Highest-priority weaknesses
 1) Advanced solver claim/implementation mismatch ("No backtracking" vs actual recursive backtracking).
-2) Non-deterministic random fallback in Advanced solver.
+2) Non-deterministic random backup in Advanced solver.
 3) divide_and_conquer strategy path not active in GameState.
 4) Duplicate _recursive_region_fill definition and pseudo-code remnants create maintainability/audit risk.
 5) DP memo-hit metrics are modeled but not implemented.

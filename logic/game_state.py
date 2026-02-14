@@ -19,6 +19,7 @@ from logic.validators import is_valid_move, check_win_condition
 from logic.solvers.greedy_solver import GreedySolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
+from logic.strategy_controller import StrategyController
 from logic.generators.dnc_generator import DivideAndConquerPuzzleGenerator
 from logic.statistics import StatisticsManager
 from daa.greedy_algos import prim_mst, huffman_coding
@@ -42,8 +43,10 @@ class GameState:
                 self.cpu = DivideConquerSolver(self)
             else:  # "greedy"
                 self.cpu = GreedySolver(self)
+            self.strategy_controller = StrategyController(self, self.solver_strategy)
         else:
             self.cpu = None
+            self.strategy_controller = None
         self.stats_mgr = StatisticsManager()
         self.last_cpu_move_info = None  # To store explanation of the last CPU move
         
@@ -204,6 +207,21 @@ class GameState:
             "strategy": strategy.replace("_", " ").title(),
             "explanation": reason if isinstance(reason, str) else "No hint available.",
         }
+
+    def get_next_cpu_move(self):
+        """
+        Controller-routed CPU move selection with per-turn fallback reset.
+
+        Returns:
+            (move, source_label, solver_used, fallback_message)
+        """
+        if self.strategy_controller is None:
+            return None, "No moves available", None, None
+
+        move, source = self.strategy_controller.get_next_cpu_move()
+        solver_used = self.strategy_controller.get_solver_for_source(source)
+        fallback_message = self.strategy_controller.get_fallback_message(source)
+        return move, source, solver_used, fallback_message
 
     def _generate_clues(self):
         """
@@ -590,6 +608,7 @@ class GameState:
         
         # We do NOT copy the 'cpu' solver instance. 
         # The simulation service will instantiate its own solvers on this new state.
-        new_state.cpu = None 
-        
+        new_state.cpu = None
+        new_state.strategy_controller = None
+
         return new_state

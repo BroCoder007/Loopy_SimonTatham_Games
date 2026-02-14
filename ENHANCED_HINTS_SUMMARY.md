@@ -72,7 +72,7 @@ generate_hint()
 ├── Priority 2: _detect_forced_exclusions()
 ├── Priority 3: _detect_boundary_compatibility_forced_edges()
 ├── Priority 4: _detect_pruning_forced_exclusions()
-└── Fallback: No hints available
+└── Backup: No hints available
 ```
 
 ## 🎨 Presentation Benefits
