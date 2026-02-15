@@ -18,7 +18,6 @@ import copy
 from typing import Dict, Any, Optional
 
 from logic.game_state import GameState
-from logic.solvers.greedy_solver import GreedySolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
 
@@ -58,12 +57,12 @@ class LiveAnalysisService:
 
         # Run solvers in parallel with timeout
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            future_greedy = executor.submit(self._run_greedy, greedy_state)
+            # future_greedy = executor.submit(self._run_greedy, greedy_state) # Disabled
             future_dnc = executor.submit(self._run_dnc, dnc_state)
             future_dp = executor.submit(self._run_dp, dp_state)
 
             futures_map = {
-                "greedy": future_greedy,
+                # "greedy": future_greedy,
                 "dnc": future_dnc,
                 "dp": future_dp,
             }
@@ -114,26 +113,7 @@ class LiveAnalysisService:
 
     # ── Solver Runners ─────────────────────────────────────────
 
-    def _run_greedy(self, state_clone: GameState) -> Dict[str, Any]:
-        """
-        Greedy solver: uses decide_move() — same API as real game.
-        'states' = number of actionable candidate edges found by rule propagation.
-        """
-        start = time.time()
-        solver = GreedySolver(state_clone)
 
-        candidates, best_move = solver.decide_move()
-        duration = time.time() - start
-
-        # Greedy doesn't track "states" in the DP sense.
-        # candidates = list of deduced edge moves with priorities.
-        states_explored = len(candidates) if candidates else 0
-
-        return {
-            "move": best_move,
-            "time": duration,
-            "states": states_explored,
-        }
 
     def _run_dp(self, state_clone: GameState) -> Dict[str, Any]:
         """

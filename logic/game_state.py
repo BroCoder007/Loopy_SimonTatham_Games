@@ -16,7 +16,6 @@ import pickle
 from collections import Counter
 from logic.graph import Graph
 from logic.validators import is_valid_move, check_win_condition
-from logic.solvers.greedy_solver import GreedySolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
 from logic.strategy_controller import StrategyController
@@ -41,8 +40,8 @@ class GameState:
                 self.cpu = DynamicProgrammingSolver(self)
             elif self.solver_strategy == "divide_conquer":
                 self.cpu = DivideConquerSolver(self)
-            else:  # "greedy"
-                self.cpu = GreedySolver(self)
+            else:  # "greedy" -> default to D&C
+                self.cpu = DivideConquerSolver(self)
             self.strategy_controller = StrategyController(self, self.solver_strategy)
         else:
             self.cpu = None
@@ -94,7 +93,7 @@ class GameState:
             return "divide_conquer"
         if strategy == "dynamic_programming":
             return "dynamic_programming"
-        return "greedy"
+        return "divide_conquer" # Default for unknown
 
     def _initialize_edge_weights(self):
         # Deterministic uniform edge cost map.
@@ -193,7 +192,8 @@ class GameState:
         elif strategy == "dynamic_programming":
             solver = self.cpu if isinstance(self.cpu, DynamicProgrammingSolver) else DynamicProgrammingSolver(self)
         else:
-            solver = self.cpu if isinstance(self.cpu, GreedySolver) else GreedySolver(self)
+             # Default to D&C
+             solver = self.cpu if isinstance(self.cpu, DivideConquerSolver) else DivideConquerSolver(self)
 
         hint = solver.generate_hint(self)
         if isinstance(hint, dict):

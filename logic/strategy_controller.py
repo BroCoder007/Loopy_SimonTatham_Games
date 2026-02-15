@@ -19,7 +19,7 @@ from typing import Any, Optional, Tuple
 from logic.solvers.advanced_dp_solver import AdvancedDPSolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
-from logic.solvers.greedy_solver import GreedySolver
+from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
 
 
 class StrategyController:
@@ -30,7 +30,7 @@ class StrategyController:
         self.dp_solver = DynamicProgrammingSolver(game_state)
         self.advanced_dp_solver = AdvancedDPSolver(game_state)
         self.dnc_solver = DivideConquerSolver(game_state)
-        self.greedy_solver = GreedySolver(game_state)
+        self.dnc_solver = DivideConquerSolver(game_state)
 
     def get_next_cpu_move(self) -> Tuple[Optional[Any], str]:
         """
@@ -38,9 +38,8 @@ class StrategyController:
 
         DP mode: calls ONLY the DP solver. No fallback chain.
                  DP is guaranteed to never return None.
-        Advanced DP mode: calls Advanced DP -> DP -> D&C -> Greedy fallback.
-        D&C mode: D&C solver -> Greedy fallback.
-        Greedy mode: Greedy solver only.
+        Advanced DP mode: calls Advanced DP -> DP -> D&C.
+        D&C mode: D&C solver only.
 
         Returns:
             (move, source_label)
@@ -72,27 +71,17 @@ class StrategyController:
             if move is not None:
                 return move, "D&C (Fallback)"
             
-            # 4. Greedy (Heuristic)
-            move = self._try_solver(self.greedy_solver)
-            if move is not None:
-                return move, "Greedy (Fallback)"
             return None, "No moves available"
 
         if self.selected_mode == "dnc":
-            # D&C mode: D&C -> Greedy fallback
+            # D&C mode: D&C only
             move = self._try_solver(self.dnc_solver)
             if move is not None:
                 return move, "D&C"
-            move = self._try_solver(self.greedy_solver)
-            if move is not None:
-                return move, "Greedy (Fallback)"
             return None, "No moves available"
 
-        # Greedy mode
-        move = self._try_solver(self.greedy_solver)
-        if move is not None:
-            return move, "Greedy"
-        return None, "No moves available"
+        # Default fallback (if mode is unknown or "greedy")
+        return None, "No greedy solver available"
 
     def get_solver_for_source(self, source: str) -> Optional[Any]:
         """Return the solver instance that produced the move."""
@@ -104,8 +93,7 @@ class StrategyController:
             return self.dp_solver
         if "D&C" in source: # D&C or D&C (Fallback)
             return self.dnc_solver
-        if "Greedy" in source: # Greedy or Greedy (Fallback)
-            return self.greedy_solver
+
         return None
 
     def get_fallback_message(self, source: str) -> Optional[str]:
@@ -123,12 +111,7 @@ class StrategyController:
                  return "Advanced DP uncertain. Falling back to Standard Profile DP."
              if source == "D&C (Fallback)":
                  return "Both DP solvers uncertain. Falling back to Spatial Divide & Conquer."
-             if source == "Greedy (Fallback)":
-                return "All logical solvers exhausted. Switched to Greedy heuristics."
 
-        if self.selected_mode == "dnc":
-            if source == "Greedy (Fallback)":
-                return "No D&C move available. Switched to Greedy for this move."
 
         return None
 
@@ -160,4 +143,4 @@ class StrategyController:
             return "advanced_dp"
         if mode in ("divide_conquer", "divide_and_conquer", "dnc"):
             return "dnc"
-        return "greedy"
+        return "dnc" # Default to D&C if unknown or greedy
