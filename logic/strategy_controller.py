@@ -6,9 +6,8 @@ Hierarchical orchestration layer for CPU move selection.
 Rules:
 - Keep solver implementations pure.
 - In DP mode: call ONLY the DP solver (no fallback chain).
-- In Advanced DP mode: Advanced DP -> DP -> D&C -> Greedy fallback.
-- In D&C mode: D&C solver -> Greedy fallback.
-- In Greedy mode: Greedy solver only.
+- In Advanced DP mode: Advanced DP -> DP -> D&C.
+- In D&C mode: D&C solver only.
 - Re-evaluate full priority order on every CPU turn.
 """
 
@@ -19,7 +18,6 @@ from typing import Any, Optional, Tuple
 from logic.solvers.advanced_dp_solver import AdvancedDPSolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
-from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
 
 
 class StrategyController:
@@ -29,7 +27,6 @@ class StrategyController:
 
         self.dp_solver = DynamicProgrammingSolver(game_state)
         self.advanced_dp_solver = AdvancedDPSolver(game_state)
-        self.dnc_solver = DivideConquerSolver(game_state)
         self.dnc_solver = DivideConquerSolver(game_state)
 
     def get_next_cpu_move(self) -> Tuple[Optional[Any], str]:
