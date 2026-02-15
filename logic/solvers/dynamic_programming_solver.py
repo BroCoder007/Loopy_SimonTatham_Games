@@ -1,28 +1,5 @@
 """
 Dynamic Programming Solver
-==========================
-Exact deterministic row-profile DP for Slitherlink.
-
-Elite Strategy Engine:
-- Full solution-space enumeration
-- Frequency analysis across all valid solutions
-- Certainty-based move selection (never returns None)
-- Merge sort for deterministic ordering
-- No fallback, no greedy, no D&C, no heuristics, no randomness
-
-Core guarantees:
-- No recursion in DP core
-- No backtracking search
-<<<<<<< feature/loop-solver-improvements
-- No fallback solver calls
-- No beam truncation / artificial DP state cap
-- Deterministic iteration order (merge sort)
-- DP NEVER returns None
-=======
-- No backup solver calls
-- No beam truncation (only a safety guard for state explosion)
-- Deterministic iteration order
->>>>>>> main
 """
 
 from __future__ import annotations
@@ -30,15 +7,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from logic.solvers.solver_interface import AbstractSolver, HintPayload
-<<<<<<< feature/loop-solver-improvements
 from logic.solvers.merge_sort import merge_sort
-=======
-from logic.solvers.solver_errors import (
-    ControlledStateExplosionError,
-    STATE_SPACE_EXPLOSION_MESSAGE,
-    resolve_safe_limit,
-)
->>>>>>> main
 
 Vertex = Tuple[int, int]
 Edge = Tuple[Vertex, Vertex]
@@ -93,7 +62,6 @@ class DynamicProgrammingSolver(AbstractSolver):
         if not is_cpu_turn:
             return [], None
 
-<<<<<<< feature/loop-solver-improvements
         move, action, explanation = self._certainty_based_move()
         self.last_explanation = explanation
 
@@ -107,43 +75,12 @@ class DynamicProgrammingSolver(AbstractSolver):
 
         confidence = 100
         return [(move, confidence)], move
-=======
-        try:
-            if not self._solution_computed:
-                self._compute_full_solution()
-
-            for _ in range(2):
-                idx = self._find_valid_solution_move_index()
-                if idx is not None:
-                    self.current_move_index = idx
-                    move_data = self.solution_moves[idx]
-                    move = move_data["move"]
-                    self.last_explanation = move_data.get("explanation", "Dynamic Programming precomputed move.")
-
-                    from logic.execution_trace import log_pure_dp_move
-
-                    log_pure_dp_move(
-                        move=move,
-                        explanation=self.last_explanation,
-                        dp_state_count=self.dp_state_count,
-                    )
-                    return [(move, 100)], move
-
-                self._recompute_solution()
-
-            self.last_explanation = "Dynamic Programming has completed all precomputed moves."
-            return [], None
-        except ControlledStateExplosionError:
-            self._handle_state_explosion()
-            return [], None
->>>>>>> main
 
     def solve(self, board: Any = None) -> Edge:
         """
         Returns the next move using certainty-based selection.
         DP NEVER returns None.
         """
-<<<<<<< feature/loop-solver-improvements
         move, action, explanation = self._certainty_based_move()
         self.last_explanation = explanation
 
@@ -155,53 +92,11 @@ class DynamicProgrammingSolver(AbstractSolver):
             dp_state_count=self.dp_state_count,
         )
         return move
-=======
-        if self._state_explosion_detected:
-            self._publish_state_explosion_message()
-            return None
-
-        try:
-            if not self._solution_computed:
-                self._compute_full_solution()
-
-            for _ in range(2):
-                idx = self._find_valid_solution_move_index()
-                if idx is not None:
-                    self.current_move_index = idx
-                    move_data = self.solution_moves[idx]
-                    move = move_data["move"]
-
-                    from logic.execution_trace import log_pure_dp_move
-
-                    log_pure_dp_move(
-                        move=move,
-                        explanation=move_data.get("explanation", ""),
-                        dp_state_count=self.dp_state_count,
-                    )
-                    return move
-
-                self._recompute_solution()
-        except ControlledStateExplosionError:
-            self._handle_state_explosion()
-
-        return None
->>>>>>> main
 
     def generate_hint(self, board: Any = None) -> HintPayload:
         target = board if board is not None else self.game_state
         strategy_name = "Dynamic Programming (State Compression)"
 
-<<<<<<< feature/loop-solver-improvements
-=======
-        if self._state_explosion_detected:
-            self._publish_state_explosion_message()
-            return {
-                "move": None,
-                "strategy": strategy_name,
-                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
-            }
-
->>>>>>> main
         is_human_turn = (
             (self.game_state.game_mode in ["vs_cpu", "expert"] and self.game_state.turn == "Player 1 (Human)")
             or (self.game_state.game_mode not in ["vs_cpu", "expert"])
@@ -214,7 +109,6 @@ class DynamicProgrammingSolver(AbstractSolver):
                 "explanation": "Hints are only available during your turn.",
             }
 
-<<<<<<< feature/loop-solver-improvements
         current_edges = set(target.graph.edges)
         all_potential = self._get_all_potential_edges()
 
@@ -311,54 +205,6 @@ class DynamicProgrammingSolver(AbstractSolver):
                     }
 
         # Board is fully solved or stuck
-=======
-        try:
-            if not self._solution_computed:
-                self._compute_full_solution()
-
-            if not self._has_compatible_solution:
-                return {
-                    "move": None,
-                    "strategy": strategy_name,
-                    "explanation": "No valid solutions found via exact profile DP.",
-                }
-
-            current_edges = set(target.graph.edges)
-
-            for i in range(self.current_move_index, len(self.solution_moves)):
-                move_data = self.solution_moves[i]
-                move = move_data["move"]
-
-                if move not in current_edges:
-                    from logic.validators import is_valid_move
-
-                    valid, _ = is_valid_move(target.graph, move[0], move[1], target.clues)
-                    if valid:
-                        return {
-                            "move": move,
-                            "strategy": strategy_name,
-                            "explanation": move_data.get(
-                                "explanation",
-                                "This edge is part of the exact DP solution path.",
-                            ),
-                        }
-
-            for edge in sorted(current_edges):
-                if edge not in self._final_solution_edges:
-                    return {
-                        "move": edge,
-                        "strategy": strategy_name,
-                        "explanation": self._generate_edge_removal_reasoning(edge, target),
-                    }
-        except ControlledStateExplosionError:
-            self._handle_state_explosion()
-            return {
-                "move": None,
-                "strategy": strategy_name,
-                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
-            }
-
->>>>>>> main
         return {
             "move": None,
             "strategy": strategy_name,
@@ -513,7 +359,6 @@ class DynamicProgrammingSolver(AbstractSolver):
         _set_meta(move, summary, total, freq, normalized_certainty)
         return move, action, explanation
 
-<<<<<<< feature/loop-solver-improvements
     def _compute_all_valid_solutions(self) -> List[Set[Edge]]:
         """
         STEP 1: Compute full valid solution space.
@@ -545,19 +390,10 @@ class DynamicProgrammingSolver(AbstractSolver):
 
         For every undecided edge E, compute:
             count_on[E] = number of solutions where E is included
-=======
-    def _recompute_solution(self) -> None:
-        if self._state_explosion_detected:
-            return
-        self._solution_computed = False
-        self.current_move_index = 0
-        self._compute_full_solution()
->>>>>>> main
 
         Returns:
             (count_on, total) where total = len(all_solutions)
         """
-<<<<<<< feature/loop-solver-improvements
         total = len(all_solutions)
         count_on: Dict[Edge, int] = {}
 
@@ -648,44 +484,9 @@ class DynamicProgrammingSolver(AbstractSolver):
     # ------------------------------------------------------------------
     #  DP CORE ENGINE
     # ------------------------------------------------------------------
-=======
-        Compute one deterministic contradiction-based forced deduction.
-        """
-        forced = self._find_forced_deduction(self.game_state)
-        self.current_move_index = 0
-
-        if forced is None:
-            self._final_solution_edges = set(self.game_state.graph.edges)
-            self.solution_moves = []
-            if not self.last_explanation:
-                self.last_explanation = "No deterministic DP contradiction-based deduction available."
-            self._solution_computed = True
-            return
-
-        edge, is_inclusion, explanation = forced
-        next_edges = set(self.game_state.graph.edges)
-        if is_inclusion:
-            next_edges.add(edge)
-            ref = "forced_inclusion"
-        else:
-            next_edges.discard(edge)
-            ref = "forced_exclusion"
-
-        self._final_solution_edges = next_edges
-        self.solution_moves = [
-            {
-                "move": edge,
-                "explanation": explanation,
-                "dp_state_reference": ref,
-            }
-        ]
-        self.last_explanation = explanation
-        self._solution_computed = True
->>>>>>> main
 
     def _find_forced_deduction(self, target: Any) -> Optional[Tuple[Edge, bool, str]]:
         """
-<<<<<<< feature/loop-solver-improvements
         Exact deterministic row-profile DP.
 
         Public compatibility:
@@ -697,12 +498,6 @@ class DynamicProgrammingSolver(AbstractSolver):
         - No recursion, no search backtracking.
         - Full reachable-state exploration (no beam/state truncation).
         - All iteration uses merge_sort for deterministic ordering.
-=======
-        Full contradiction-based deduction.
-
-        Returns:
-            (edge, is_inclusion, explanation) or None if no forced move exists.
->>>>>>> main
         """
         all_potential_edges = self._get_all_potential_edges()
         all_potential_set = set(all_potential_edges)
@@ -722,20 +517,10 @@ class DynamicProgrammingSolver(AbstractSolver):
             all_potential_edges=all_potential_edges,
         )
 
-<<<<<<< feature/loop-solver-improvements
         clue_by_row: List[Dict[int, int]] = [dict() for _ in range(rows)]
         for (r, c), val in merge_sort(list(clues.items())):
             if 0 <= r < rows and 0 <= c < cols:
                 clue_by_row[r][c] = val
-=======
-        if forced_inclusions:
-            edge = forced_inclusions[0]
-            return (
-                edge,
-                True,
-                f"Forced inclusion: edge {edge} appears in all {len(all_solutions)} compatible DP solutions.",
-            )
->>>>>>> main
 
         if forced_exclusions:
             edge = forced_exclusions[0]
@@ -754,7 +539,6 @@ class DynamicProgrammingSolver(AbstractSolver):
             if not on_solutions:
                 # Edge forced OFF, but absent edges are already OFF in this UI model.
                 continue
-<<<<<<< feature/loop-solver-improvements
             state: StateKey = (top_mask, 0, initial_labels, False)
             current_layer[state] = 1
             dp_profiles[0][(0, initial_labels, False)] = True
@@ -830,22 +614,6 @@ class DynamicProgrammingSolver(AbstractSolver):
                 print(f"  rejected_component_inconsistency: {row_rejected['component_inconsistency']}")
 
             current_layer = next_layer
-=======
-
-            assume_off = {edge}
-            off_solutions = self._run_dp(
-                target,
-                limit=1,
-                forced_edges=current_edges,
-                forbidden_edges=assume_off,
-            )
-            if not off_solutions:
-                return (
-                    edge,
-                    True,
-                    f"Contradiction test: assuming {edge}=OFF yields no DP solution, so {edge} must be ON.",
-                )
->>>>>>> main
 
         self.last_explanation = "No contradiction-based forced DP move exists for current undecided edges."
         return None
@@ -863,7 +631,6 @@ class DynamicProgrammingSolver(AbstractSolver):
             forbidden_edges=forbidden_edges,
         )
 
-<<<<<<< feature/loop-solver-improvements
         # Collect valid final states
         valid_final_states: List[StateKey] = []
 
@@ -932,51 +699,6 @@ class DynamicProgrammingSolver(AbstractSolver):
                 stack.append((row - 1, prev_state, new_edges))
 
         return results
-=======
-    def _compute_edge_intersections(
-        self,
-        all_solutions: List[Set[Edge]],
-        current_edges: Set[Edge],
-        all_potential_edges: List[Edge],
-    ) -> Tuple[List[Edge], List[Edge]]:
-        if not all_solutions:
-            return [], []
-        from logic.validators import is_valid_move
-
-        common_edges = set(all_solutions[0])
-        seen_edges: Set[Edge] = set()
-        for sol in all_solutions:
-            common_edges.intersection_update(sol)
-            seen_edges.update(sol)
-
-        forced_inclusions: List[Edge] = []
-        for edge in sorted(common_edges):
-            if edge in current_edges:
-                continue
-
-            valid, _ = is_valid_move(self.game_state.graph, edge[0], edge[1], self.game_state.clues)
-            if valid:
-                forced_inclusions.append(edge)
-
-        forced_exclusions: List[Edge] = []
-        for edge in sorted(all_potential_edges):
-            if edge in seen_edges:
-                continue
-            if edge in current_edges:
-                forced_exclusions.append(edge)
-
-        return forced_inclusions, forced_exclusions
-
-    def _get_all_potential_edges(self) -> List[Edge]:
-        edges: List[Edge] = []
-        for r in range(self.rows + 1):
-            for c in range(self.cols):
-                edges.append(tuple(sorted(((r, c), (r, c + 1)))))
-        for r in range(self.rows):
-            for c in range(self.cols + 1):
-                edges.append(tuple(sorted(((r, c), (r + 1, c)))))
-        return edges
->>>>>>> main
 
     def _is_valid_final_solution(self, edges: Set[Edge], clues: Dict[Tuple[int, int], int]) -> bool:
         """
