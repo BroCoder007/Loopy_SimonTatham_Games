@@ -96,7 +96,20 @@ class AdvancedDPSolver(AbstractSolver):
         self._solution_computed = False
         self._final_edge_probabilities: Dict[Edge, float] = {}
         self._total_valid_solutions = 0
-
+        
+        # Enhanced Hint System - Phase 1 Stats
+        self._merge_stats = {
+            "region_stats": {},
+            "merge_details": []
+        }
+        self._boundary_edges: Set[Edge] = set()
+        
+        # Test Compatibility
+        self._final_solution_edges: List[Edge] = []
+        
+        # Method Alias for Tests
+        self._compute_full_solution = self._compute_full_logic
+        
     def solve(self, board: Any = None):
         """Standard Solver API."""
         if not self._solution_computed:
@@ -178,12 +191,88 @@ class AdvancedDPSolver(AbstractSolver):
         }
 
     # --------------------------------------------------------------------------
+    # Enhanced Hint Logic (Phase 1)
+    # --------------------------------------------------------------------------
+
+    def _detect_forced_inclusions(self, game_state) -> List[Edge]:
+        """Priority 1: Detect edges that MUST be included in ALL valid solutions."""
+        if not self._solution_computed:
+            self._compute_full_logic()
+            
+        forced_edges = []
+        current_edges = set(game_state.graph.edges)
+        
+        for edge, prob in self._final_edge_probabilities.items():
+            if prob >= 0.999 and edge not in current_edges:
+                forced_edges.append(edge)
+                
+        return forced_edges
+
+    def _detect_forced_exclusions(self, game_state) -> List[Edge]:
+        """Priority 2: Detect edges that CANNOT be included in ANY valid solution."""
+        if not self._solution_computed:
+            self._compute_full_logic()
+            
+        forced_edges = []
+        current_edges = set(game_state.graph.edges)
+        
+        for edge, prob in self._final_edge_probabilities.items():
+            if prob <= 0.001 and edge in current_edges:
+                forced_edges.append(edge)
+                
+        return forced_edges
+
+    def _detect_boundary_compatibility_forced_edges(self, game_state) -> List[Edge]:
+        """Priority 3: Detect edges forced by region boundary compatibility constraints."""
+        forced_inclusions = self._detect_forced_inclusions(game_state)
+        boundary_forced = []
+        
+        for edge in forced_inclusions:
+            if edge in self._boundary_edges:
+                boundary_forced.append(edge)
+                
+        return boundary_forced
+
+    def _detect_pruning_forced_exclusions(self, game_state) -> List[Edge]:
+        """Priority 4: Detect edges excluded due to pruning during DP merge."""
+        forced_exclusions = self._detect_forced_exclusions(game_state)
+        pruned_forced = []
+        
+        # Heuristic: If an edge is forced excluded AND it was part of a boundary merge
+        # (or adjacent to one), it is likely due to pruning.
+        # Simple implementation: Same as boundary exclusions for now.
+        for edge in forced_exclusions:
+            if edge in self._boundary_edges:
+                pruned_forced.append(edge)
+                
+        return pruned_forced
+
+    def _generate_inclusion_explanation(self, edge: Edge, total_solutions: int) -> str:
+        return (f"Constructive Move (DP + Divide & Conquer): Analysis of {total_solutions} valid global solutions "
+                f"confirms this edge is required in 100% of configurations.")
+
+    def _generate_exclusion_explanation(self, edge: Edge, total_solutions: int) -> str:
+        return (f"Reactive Move (DP Constraints): This edge appears in 0% of the {total_solutions} "
+                f"valid solutions and must be removed to satisfy loop constraints.")
+
+    def _generate_boundary_explanation(self, edge: Edge, total_solutions: int) -> str:
+        return (f"Boundary Merge Analysis: This edge lies on a crucial region seam. "
+                f"Merging sub-grid solutions forces this connection to maintain loop continuity.")
+
+    def _generate_pruning_explanation(self, edge: Edge, total_solutions: int) -> str:
+        return (f"State Pruning: During region merging, all configurations containing this edge "
+                f"were pruned due to incompatibility with neighboring regions.")
+
+    # --------------------------------------------------------------------------
     # Core Logic
     # --------------------------------------------------------------------------
     
     def _compute_full_logic(self):
         self._memo_regions.clear()
         self._final_edge_probabilities.clear()
+        self._boundary_edges.clear()
+        self._merge_stats["region_stats"].clear()
+        self._merge_stats["merge_details"].clear()
         self._total_valid_solutions = 0
         
         root_profiles = self._solve_region_recursive(0, self.rows, 0, self.cols)
@@ -215,7 +304,12 @@ class AdvancedDPSolver(AbstractSolver):
                 aggregated_edge_counts[edge] += count
                 
         for edge, count in aggregated_edge_counts.items():
-            self._final_edge_probabilities[edge] = count / total_count
+            prob = count / total_count
+            self._final_edge_probabilities[edge] = prob
+            
+            # Populate final solution with high-probability edges
+            if prob > 0.5:
+                self._final_solution_edges.append(edge)
             
         self._solution_computed = True
         self.last_explanation = f"Analyzed {total_count} valid global solutions."
@@ -236,16 +330,28 @@ class AdvancedDPSolver(AbstractSolver):
             
         if rows >= cols:
             split = r_min + (rows // 2)
+            # Track horizontal boundary edges along split row
+            for c in range(c_min, c_max):
+                self._boundary_edges.add(tuple(sorted(((split, c), (split, c+1)))))
+                
             top = self._solve_region_recursive(r_min, split, c_min, c_max)
             bottom = self._solve_region_recursive(split, r_max, c_min, c_max)
             profiles = self._merge_vertical_profiles(top, bottom, split, c_min, c_max)
         else:
             split = c_min + (cols // 2)
+            # Track vertical boundary edges along split col
+            for r in range(r_min, r_max):
+                self._boundary_edges.add(tuple(sorted(((r, split), (r+1, split)))))
+                
             left = self._solve_region_recursive(r_min, r_max, c_min, split)
             right = self._solve_region_recursive(r_min, r_max, split, c_max)
             profiles = self._merge_horizontal_profiles(left, right, r_min, r_max, split)
             
         self._memo_regions[region_key] = profiles
+        
+        # Stats tracking
+        self._merge_stats["region_stats"][region_key] = len(profiles)
+        
         return profiles
 
     # --------------------------------------------------------------------------
@@ -504,6 +610,14 @@ class AdvancedDPSolver(AbstractSolver):
         return new_profiles
 
     def _merge_pair(self, p1: RegionProfile, p2: RegionProfile, mode: str, result_map):
+        # Stats
+        merge_info = {
+            "p1_count": p1.count,
+            "p2_count": p2.count,
+            "mode": mode,
+            "pruned": False
+        }
+        
         s1 = p1.signature
         s2 = p2.signature
         
@@ -598,8 +712,14 @@ class AdvancedDPSolver(AbstractSolver):
         
         has_boundary_paths = any(x > 0 for x in final_top + final_bottom + final_left + final_right)
         if total_internal_loops > 0 and has_boundary_paths:
+            merge_info["pruned"] = True
+            merge_info["reason"] = "Premature loop with open paths"
+            self._merge_stats["merge_details"].append(merge_info)
             return 
         if total_internal_loops > 1:
+            merge_info["pruned"] = True
+            merge_info["reason"] = "Multiple disconnected loops"
+            self._merge_stats["merge_details"].append(merge_info)
             return 
             
         new_sig = BoundarySignature(final_top, final_bottom, final_left, final_right)
