@@ -142,6 +142,9 @@ class GreedySolver(AbstractSolver):
         # Construct MoveExplanation from local context
         highlight_cells = self._adjacent_cells(move)
         short_summary = explanation.replace("Using Greedy Strategy: ", "").split(";")[0]
+        # Make it even more concise
+        if len(short_summary) > 50:
+            short_summary = short_summary[:47] + "..."
 
         from logic.solvers.solver_interface import MoveExplanation
         self._last_move_metadata = MoveExplanation(

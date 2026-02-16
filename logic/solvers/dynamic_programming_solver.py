@@ -279,9 +279,9 @@ class DynamicProgrammingSolver(AbstractSolver):
                     )
                     if valid:
                         summary = (
-                            f"Global DP scanned all {total_potential} edges across the "
-                            f"{self.rows}x{self.cols} grid. No complete loop solution "
-                            f"exists yet ({placed_count} edges placed, {progress_pct}% progress). "
+                            f"Scanning {total_potential} edges. "
+                            f"Progress: {placed_count} edges ({progress_pct}%). "
+                            f"No complete loop found yet."
                             f"Using constraint analysis to add edge {edge} — "
                             f"validated against all {len(self.game_state.clues)} clue constraints."
                         )
@@ -290,9 +290,9 @@ class DynamicProgrammingSolver(AbstractSolver):
 
             edge = merge_sort(all_potential)[0]
             summary = (
-                f"Global DP exhausted all constraint checks across {total_potential} edges. "
-                f"Board is {progress_pct}% filled. "
-                f"Selecting edge {edge} for exploratory placement."
+                f"All constraint checks done on {total_potential} edges. "
+                f"Board {progress_pct}% filled. "
+                f"Trying edge {edge}."
             )
             _set_meta(edge, summary)
             return (edge, "include", f"DP certainty-based selection: {summary}")
@@ -312,10 +312,9 @@ class DynamicProgrammingSolver(AbstractSolver):
             if removable:
                 edge = removable[0]
                 summary = (
-                    f"Global DP analyzed {num_solutions} valid solution(s) across the "
-                    f"entire {self.rows}x{self.cols} grid. Edge {edge} appears in "
-                    f"0/{num_solutions} solutions — it contradicts every valid loop. "
-                    f"Removing it to converge toward the correct solution."
+                    f"Analyzed {num_solutions} solution(s). "
+                    f"Edge {edge} appears in 0/{num_solutions} solutions — "
+                    f"must be removed."
                 )
                 _set_meta(edge, summary, num_solutions, 0, 1.0)
                 return (edge, "exclude", f"DP certainty-based selection: {summary}")
@@ -329,9 +328,9 @@ class DynamicProgrammingSolver(AbstractSolver):
                 for edge in merge_sort(list(current_edges)):
                     if edge not in best_solution:
                         summary = (
-                            f"Board is {progress_pct}% complete. DP found {num_solutions} "
-                            f"valid solution(s) and is refining toward the optimal one. "
-                            f"Edge {edge} is not part of the best valid loop — removing it."
+                            f"Board {progress_pct}% complete. "
+                            f"Found {num_solutions} solution(s). "
+                            f"Edge {edge} not in best loop — removing."
                         )
                         _set_meta(edge, summary, num_solutions, 0, 1.0)
                         return (edge, "exclude", f"DP certainty-based selection: {summary}")
@@ -339,7 +338,7 @@ class DynamicProgrammingSolver(AbstractSolver):
             edge = merge_sort(all_potential)[0]
             summary = (
                 f"Board fully resolved ({progress_pct}% filled, "
-                f"{num_solutions} solutions analyzed). All edges decided."
+                f"{num_solutions} solutions analyzed)."
             )
             _set_meta(edge, summary, num_solutions, 0, 1.0)
             return (edge, "include", f"DP certainty-based selection: {summary}")
@@ -358,10 +357,9 @@ class DynamicProgrammingSolver(AbstractSolver):
         freq = count_on.get(move, 0)
 
         summary = (
-            f"Global DP analyzed {total} valid solution(s) across the "
-            f"{self.rows}x{self.cols} grid ({len(undecided)} edges undecided, "
-            f"{progress_pct}% progress). Edge {move} appears in {freq}/{total} "
-            f"solutions ({round(normalized_certainty * 100)}% certainty). "
+            f"Analyzed {total} solution(s) on {self.rows}x{self.cols} grid. "
+            f"{len(undecided)} edges left, {progress_pct}% progress. "
+            f"Edge {move} appears in {freq}/{total} solutions."
             f"{'Adding' if action == 'include' else 'Removing'} this edge "
             f"maximizes convergence toward the correct loop."
         )

@@ -134,11 +134,16 @@ class DivideConquerSolver(AbstractSolver):
         # In a real implementation we'd track the specific active region better,
         # but for now we'll use the full board or the last logged region.
 
+        # Simplify the explanation for better readability
+        summary = self._last_explanation.replace("Using Divide & Conquer Strategy: ", "")
+        if len(summary) > 60:
+            summary = summary[:57] + "..."
+        
         from logic.solvers.solver_interface import MoveExplanation
         self._last_move_metadata = MoveExplanation(
             mode="Divide & Conquer",
             scope="Regional",  # or Global if full board
-            decision_summary=self._last_explanation.replace("Using Divide & Conquer Strategy: ", ""),
+            decision_summary=summary,
             highlight_cells=[],
             highlight_edges=[move] if move else [],
             highlight_region=region,

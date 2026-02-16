@@ -398,7 +398,7 @@ class GamePage(tk.Frame):
             if strategy_source == "No moves available":
                 self.game_state.message = "No CPU move available for this board state."
             elif strategy_source == "DP (No deterministic move)":
-                self.game_state.message = "DP has no deterministic move on this board state."
+                self.game_state.message = "DP analyzing board state..."
             self.game_state.switch_turn()
             self.update_ui()
 
