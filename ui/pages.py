@@ -135,6 +135,7 @@ class HomePage(tk.Frame):
             ("Greedy Solver", "greedy"),
             ("Divide & Conquer Solver", "divide_conquer"),
             ("Dynamic Programming Solver", "dynamic_programming"),
+            ("Advanced DP (Region + Profile)", "advanced_dp"),
         ]
 
         for label, value in options:

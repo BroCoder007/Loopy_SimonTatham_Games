@@ -168,7 +168,7 @@ class BoardCanvas(tk.Canvas):
             return
             
         # Check against basic rules
-        from logic.greedy_cpu import count_edges_around_cell
+        from logic.validators import count_edges_around_cell
         is_bad = False
         reason = ""
         
