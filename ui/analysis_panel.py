@@ -166,14 +166,7 @@ class LiveAnalysisPanel(tk.Toplevel):
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        for row in data:
-            values = (
-                row.get("move_number"),
-                row.get("greedy_move"), row.get("greedy_time"), row.get("greedy_states"),
-                row.get("dnc_move"), row.get("dnc_time"), row.get("dnc_states"),
-                row.get("dp_move"), row.get("dp_time"), row.get("dp_states"),
-            )
-            self.tree.insert("", "end", values=values)
+        self.tree.tag_configure("greedy_fail", background="#3E2723", foreground="#FFCCBC") # Dark reddish background
 
         # 2. Extract data series
         moves = [r.get("move_number") for r in data]
@@ -185,6 +178,25 @@ class LiveAnalysisPanel(tk.Toplevel):
         greedy_states = [self._safe_int(r.get("greedy_states")) for r in data]
         dnc_states = [self._safe_int(r.get("dnc_states")) for r in data]
         dp_states = [self._safe_int(r.get("dp_states")) for r in data]
+
+        for row in data:
+            values = (
+                row.get("move_number"),
+                row.get("greedy_move"), row.get("greedy_time"), row.get("greedy_states"),
+                row.get("dnc_move"), row.get("dnc_time"), row.get("dnc_states"),
+                row.get("dp_move"), row.get("dp_time"), row.get("dp_states"),
+            )
+            
+            # Check for Greedy Failure vs Others Success
+            g_move = str(row.get("greedy_move"))
+            d_move = str(row.get("dnc_move"))
+            dp_move = str(row.get("dp_move"))
+            
+            tags = ()
+            if g_move in ("None", "N/A", "Timeout") and (d_move not in ("None", "N/A", "Timeout") or dp_move not in ("None", "N/A", "Timeout")):
+                 tags = ("greedy_fail",)
+                 
+            self.tree.insert("", "end", values=values, tags=tags)
 
         import itertools
         greedy_cum = list(itertools.accumulate(greedy_times))

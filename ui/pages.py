@@ -64,8 +64,11 @@ class HomePage(tk.Frame):
                                  bg=CARD_BG, fg=TEXT_COLOR, selectcolor=CARD_BG, activebackground=CARD_BG)
         chk_dnc.pack(pady=(10, 5))
 
-        HoverButton(self.diff_card, text="Easy (4x4)", command=lambda: self.start_with_mode(4, 4, "Easy"), width=24, fg=APPLE_GREEN).pack(pady=5)
+        # "Easy" button is now the Stealth Demo (Hardcoded 5x5)
+        HoverButton(self.diff_card, text="Easy (5x5)", command=self._start_demo, width=24, fg=APPLE_GREEN).pack(pady=5)
+        
         HoverButton(self.diff_card, text="Medium (5x5)", command=lambda: self.start_with_mode(5, 5, "Medium"), width=24, fg=APPLE_BLUE).pack(pady=5)
+        HoverButton(self.diff_card, text="Hard (5x5)", command=lambda: self.start_with_mode(5, 5, "Hard"), width=24, fg=APPLE_ORANGE).pack(pady=5)
         HoverButton(self.diff_card, text="Hard (7x7)", command=lambda: self.start_with_mode(7, 7, "Hard"), width=24, fg=APPLE_RED).pack(pady=5)
     
     def set_mode(self, mode):
@@ -93,6 +96,12 @@ class HomePage(tk.Frame):
         generator_type = "dnc" if self.var_use_dnc.get() else "prim"
         self._show_strategy_modal(
             on_selected=lambda strategy: self.on_start_game(rows, cols, difficulty, self.selected_mode, strategy, generator_type)
+        )
+
+    def _start_demo(self):
+        """Launch the hardcrafted Greedy-breaking demo puzzle (Stealth Mode: labeled as Easy)."""
+        self._show_strategy_modal(
+            on_selected=lambda strategy: self.on_start_game(5, 5, "Easy", self.selected_mode, strategy, "demo")
         )
 
     def _show_strategy_modal(self, on_selected):

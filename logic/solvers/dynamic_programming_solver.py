@@ -57,7 +57,9 @@ class DynamicProgrammingSolver(AbstractSolver):
         self.current_row = 0
         self.state_count = 0
         self.total_states_generated = 0
-        self.dp_debug_logging = True
+        self.total_states_generated = 0
+        self.dp_debug_logging = False
+        self.SAFE_LIMIT = resolve_safe_limit(game_state, "dp_safe_limit")
         self.SAFE_LIMIT = resolve_safe_limit(game_state, "dp_safe_limit")
         self._state_explosion_detected = False
 

@@ -20,6 +20,7 @@ from typing import Dict, Any, Optional
 from logic.game_state import GameState
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
+from logic.solvers.greedy_solver import GreedySolver
 
 
 class LiveAnalysisService:
@@ -28,8 +29,8 @@ class LiveAnalysisService:
     Re-instantiated every CPU turn — stateless by design.
     """
 
-    # Timeout per solver (seconds). DP and D&C can be slow on large boards.
-    SOLVER_TIMEOUT = 2.0
+    # Timeout per solver (seconds). 3s allows D&C/DP to finish on Hard 5x5.
+    SOLVER_TIMEOUT = 3.0
 
     def __init__(self, game_state: GameState):
         self.game_state = game_state
@@ -57,12 +58,12 @@ class LiveAnalysisService:
 
         # Run solvers in parallel with timeout
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            # future_greedy = executor.submit(self._run_greedy, greedy_state) # Disabled
+            future_greedy = executor.submit(self._run_greedy, greedy_state)
             future_dnc = executor.submit(self._run_dnc, dnc_state)
             future_dp = executor.submit(self._run_dp, dp_state)
 
             futures_map = {
-                # "greedy": future_greedy,
+                "greedy": future_greedy,
                 "dnc": future_dnc,
                 "dp": future_dp,
             }
@@ -112,6 +113,24 @@ class LiveAnalysisService:
         return state
 
     # ── Solver Runners ─────────────────────────────────────────
+
+    def _run_greedy(self, state_clone: GameState) -> Dict[str, Any]:
+        """
+        Greedy solver: uses solve() or decide_move().
+        'states' = 1 (deterministic, single path).
+        """
+        start = time.time()
+        solver = GreedySolver(state_clone)
+        
+        # Greedy.solve() returns the best_move directly
+        move = solver.solve()
+        duration = time.time() - start
+
+        return {
+            "move": move,
+            "time": duration,
+            "states": 1,
+        }
 
 
 

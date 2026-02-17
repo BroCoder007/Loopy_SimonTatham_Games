@@ -84,6 +84,7 @@ class DivideConquerSolver(AbstractSolver):
         self.BASE_CASE_SIZE = 3
         self.SAFE_LIMIT = resolve_safe_limit(game_state, "dnc_safe_limit")
         self._state_explosion_detected = False
+        self.debug_logging = False
 
         # Visualization exposure
         self.recursion_depth: int = 0
@@ -864,6 +865,9 @@ class DivideConquerSolver(AbstractSolver):
         explanation: str,
         move: Optional[Move] = None,
     ) -> None:
+        if not self.debug_logging:
+            return
+
         self.recursion_depth = depth
         self.current_region_id = self._region_id(region)
         self.merge_stage = merge_stage
