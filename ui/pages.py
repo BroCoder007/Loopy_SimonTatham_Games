@@ -11,6 +11,7 @@ from tkinter import messagebox
 from typing import Any, Dict, List, Optional, Tuple
 from ui.styles import *
 from ui.components import HoverButton, CardFrame
+from ui.level_selection_menu import LevelSelectionMenu
 from ui.board_canvas import BoardCanvas
 from logic.game_state import GameState
 from ui.audio import play_sound
@@ -53,23 +54,7 @@ class HomePage(tk.Frame):
         HoverButton(self, text="How to Play", command=self.on_show_help, width=15, fg=TEXT_COLOR, bg=BG_COLOR).pack(pady=(20, 0))
         
         # Difficulty Selection (Initially Hidden)
-        self.diff_card = CardFrame(self, padx=40, pady=30)
-        # Don't pack immediately
-        
-        tk.Label(self.diff_card, text="Step 2: Select Difficulty", font=FONT_BODY, bg=CARD_BG, fg=TEXT_DIM).pack(pady=(0, 15))
-        
-        # Generator Selection (New)
-        self.var_use_dnc = tk.BooleanVar(value=False)
-        chk_dnc = tk.Checkbutton(self.diff_card, text="Use D&C Generator", variable=self.var_use_dnc, 
-                                 bg=CARD_BG, fg=TEXT_COLOR, selectcolor=CARD_BG, activebackground=CARD_BG)
-        chk_dnc.pack(pady=(10, 5))
-
-        # "Easy" button is now the Stealth Demo (Hardcoded 5x5)
-        HoverButton(self.diff_card, text="Easy (5x5)", command=self._start_demo, width=24, fg=APPLE_GREEN).pack(pady=5)
-        
-        HoverButton(self.diff_card, text="Medium (5x5)", command=lambda: self.start_with_mode(5, 5, "Medium"), width=24, fg=APPLE_BLUE).pack(pady=5)
-        HoverButton(self.diff_card, text="Hard (5x5)", command=lambda: self.start_with_mode(5, 5, "Hard"), width=24, fg=APPLE_ORANGE).pack(pady=5)
-        HoverButton(self.diff_card, text="Hard (7x7)", command=lambda: self.start_with_mode(7, 7, "Hard"), width=24, fg=APPLE_RED).pack(pady=5)
+        self.diff_card = LevelSelectionMenu(self, self.start_with_mode)
     
     def set_mode(self, mode):
         self.selected_mode = mode
@@ -90,18 +75,9 @@ class HomePage(tk.Frame):
         if not self.diff_card.winfo_ismapped():
             self.diff_card.pack(pady=10)
     
-    def start_with_mode(self, rows, cols, difficulty):
-        # After difficulty selection, ask for solving strategy.
-        # Default is Greedy if user closes the dialog.
-        generator_type = "dnc" if self.var_use_dnc.get() else "prim"
+    def start_with_mode(self, rows, cols, difficulty, generator_type="dp"):
         self._show_strategy_modal(
             on_selected=lambda strategy: self.on_start_game(rows, cols, difficulty, self.selected_mode, strategy, generator_type)
-        )
-
-    def _start_demo(self):
-        """Launch the hardcrafted Greedy-breaking demo puzzle (Stealth Mode: labeled as Easy)."""
-        self._show_strategy_modal(
-            on_selected=lambda strategy: self.on_start_game(5, 5, "Easy", self.selected_mode, strategy, "demo")
         )
 
     def _show_strategy_modal(self, on_selected):
@@ -293,6 +269,7 @@ class GamePage(tk.Frame):
         HoverButton(controls, text="Undo", command=self.undo, fg=WARNING_COLOR).pack(side=tk.LEFT, padx=5)
         HoverButton(controls, text="Redo", command=self.redo, fg=WARNING_COLOR).pack(side=tk.LEFT, padx=5)
         HoverButton(controls, text="Hint", command=self.hint, fg=SUCCESS_COLOR).pack(side=tk.LEFT, padx=5)
+        HoverButton(controls, text="Auto-Solve (DP)", command=self.open_solver_panel, fg=APPLE_PURPLE).pack(side=tk.LEFT, padx=5)
         
         # --- Cognitive Visualization Layer ---
         self.var_show_thinking = tk.BooleanVar(value=False)
@@ -482,6 +459,10 @@ class GamePage(tk.Frame):
     def end_game(self):
         self.on_back()
 
+    def open_solver_panel(self):
+        from ui.solver_control_panel import SolverControlPanel
+        SolverControlPanel(self.winfo_toplevel(), self)
+
     def undo(self):
         if self.game_state.undo():
             self.update_ui()
@@ -499,50 +480,19 @@ class GamePage(tk.Frame):
         return "Greedy Solver"
 
     def hint(self):
-        # Prefer solver output format when available, but remain backward-compatible.
-        move = None
-        reason = ""
-        explanation = ""
-
-        hint_obj = None
-        try:
-            if getattr(self.game_state, "cpu", None) is not None and hasattr(self.game_state.cpu, "generate_hint"):
-                hint_obj = self.game_state.cpu.generate_hint(self.game_state)
-        except Exception:
-            hint_obj = None
-
-        if isinstance(hint_obj, dict):
-            move = hint_obj.get("move")
-            # Keep old UI behavior: message continues to show the old "reason"-style text.
-            # If solver didn't provide it, fall back to something safe.
-            explanation = hint_obj.get("explanation") or ""
-            strategy = hint_obj.get("strategy") or ""
-            if strategy:
-                # Provide a stable short reason for the status bar.
-                reason = f"{strategy} hint"
-            else:
-                reason = "Hint"
-        else:
-            # Legacy (move, reason) tuple format from GameState.get_hint()
-            move, reason = self.game_state.get_hint()
-            explanation = ""
-
-        if move:
-            color = APPLE_GREEN
-            if isinstance(reason, str) and "Remove" in reason:
-                 color = APPLE_RED
-                 
-            self.canvas.show_hint(move, color=color)
-            
-            self.game_state.message = f"Hint: {reason}"
-            self._last_hint_explanation = explanation if isinstance(explanation, str) else ""
-            self._render_hint_explanation()
-            self.update_ui()
-        else:
-            self.game_state.message = "No hints available."
-            self._last_hint_explanation = explanation if isinstance(explanation, str) else ""
-            self._render_hint_explanation()
-            self.update_ui()
+        """
+        Phase 3: Route hint requests directly to the dedicated DP & Backtracking Hint Engine.
+        """
+        from logic.dp_hints_engine import DPHintsEngine
+        from ui.hint_visualizer import HintVisualizer
+        
+        # 1. Consult the DP logic engine about the current board state
+        engine = DPHintsEngine(self.game_state)
+        hint_data = engine.generate_hint()
+        
+        # 2. Command the UI Visualizer to render the data (flash red, draw path, etc.)
+        visualizer = HintVisualizer(self, self.canvas)
+        visualizer.render_hint(hint_data)
 
     def _render_hint_explanation(self):
         """
