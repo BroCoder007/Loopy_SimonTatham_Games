@@ -6,8 +6,25 @@ This project is submitted as part of the Design and Analysis of Algorithms (DAA)
 
 ---
 
-## Phase 1: Current Implementation
-This phase focuses on the core game mechanics and the implementation of Greedy Algorithms and Sorting techniques to manage game states, generate puzzles, provide hints, and save progress.
+## Phase 1 & 2: Current Implementation
+This initial phase focuses on the core game mechanics and the implementation of Greedy Algorithms and Sorting techniques to manage game states, generate puzzles, provide hints, and save progress.
+
+---
+
+## Phase 3: DP & Backtracking Integration (Final Upgrade)
+This final phase transforms the game into a dynamic, algorithmic showcase by introducing **Dynamic Programming** and **Backtracking**. The workload is strictly divided into three distinct modules to guarantee a conflict-free Git workflow.
+
+### 1. Puzzle Generation & Analytics (Person 3)
+*   **Backtracking (Generation):** An algorithmic generator that dynamically creates mathematical puzzle grids on the fly, reverting (backtracking) when a dead-end board state is detected.
+*   **Dynamic Programming (Difficulty Analytics):** Evaluates the difficulty of the generated board by calculating the number of valid partial paths that exist locally around constraint clusters, assigning an Easy/Medium/Hard score.
+
+### 2. Intelligent Hint Engine & Validation (Person 2)
+*   **Dynamic Programming (Shortest Path):** When a user requests a hint, a DP graph algorithm finds the optimal shortest path connecting two loose line endpoints.
+*   **Backtracking (Validation):** Before issuing a hint, a fast backtracking function validates the user's current board state to ensure it can theoretically lead to a win, warning the user if they've made a fatal error.
+
+### 3. Memoized Core Solver (Person 1)
+*   **Backtracking (Exhaustive Search):** A recursive algorithm capable of auto-solving any given board by attempting paths and reverting when stuck.
+*   **Dynamic Programming (State Caching):** Dramatically optimizes the Backtracking solver. By hashing and caching known dead-end board states, the algorithm skips previously evaluated bad branches, achieving exponential time-complexity reduction.
 
 ### Project Structure
 - `main.py`: The entry point of the application.

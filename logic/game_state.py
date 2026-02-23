@@ -227,10 +227,13 @@ class GameState:
     def _generate_clues(self):
         """
         Generate clues using selected generator algorithm.
-        Default: Prim's Algorithm.
-        Alternative: Divide & Conquer.
         """
-        if self.generator_type == "dnc":
+        if self.generator_type == "dp":
+            print("[GameState] Using Phase 3 DP Backtracking Generator...")
+            from logic.generators.dp_generator import DPGenerator
+            generator = DPGenerator(self.rows, self.cols, self.difficulty)
+            self.clues, self.solution_edges = generator.generate()
+        elif self.generator_type == "dnc":
             print("[GameState] Using Divide & Conquer Generator...")
             generator = DivideAndConquerPuzzleGenerator(self.rows, self.cols, self.difficulty)
             self.clues, self.solution_edges = generator.generate()
