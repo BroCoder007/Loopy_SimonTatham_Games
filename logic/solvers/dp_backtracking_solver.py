@@ -2,18 +2,36 @@ import time
 
 class DPBacktrackingSolver:
     """
-    Phase 3: Memoized Backtracking Solver (Person 1 / Leader)
-    Recursively tries to solve the board but uses a DP Hash Cache to 
-    remember dead-end board states, preventing exponential time blowouts.
+    Phase 3: Highly Optimized DP & Backtracking Solver
+    Features:
+    - Smart Edge Selection Heuristic (Implicit Constraint Propagation)
+    - Early Cycle Detection to aggressively prune dead-end loops
+    - True DP State Memoization hashing on the array of edges
     """
     def __init__(self, game_state):
         self.game_state = game_state
         self.clues = game_state.clues
         self.rows = game_state.rows
         self.cols = game_state.cols
-        self.dp_cache = {} # The DP Memoization Table
+        self.dp_cache = {} 
         self.nodes_visited = 0
+        self.cache_hits = 0
         self.all_edges = self._get_all_edges()
+        
+        self.cell_edges = {}
+        self.edge_to_cells = {e: [] for e in self.all_edges}
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if (r, c) in self.clues:
+                    edges = [
+                        tuple(sorted(((r, c), (r, c+1)))),
+                        tuple(sorted(((r+1, c), (r+1, c+1)))),
+                        tuple(sorted(((r, c), (r+1, c)))),
+                        tuple(sorted(((r, c+1), (r+1, c+1))))
+                    ]
+                    self.cell_edges[(r, c)] = edges
+                    for e in edges:
+                        self.edge_to_cells[e].append((r, c))
 
     def _get_all_edges(self):
         edges = []
@@ -23,139 +41,216 @@ class DPBacktrackingSolver:
         for r in range(self.rows):
             for c in range(self.cols + 1):
                 edges.append(tuple(sorted(((r, c), (r+1, c)))))
-        return edges
+        return tuple(edges)
 
     def solve(self, ui_callback=None, delay=0.0):
-        """
-        Solves the puzzle from the current board state.
-        ui_callback: function passed from UI to update the screen step-by-step
-        delay: float seconds to wait between steps for animation
-        """
         self.dp_cache.clear()
         self.nodes_visited = 0
+        self.cache_hits = 0
         
-        # Work on a copy of the graph edges
-        current_edges = set(self.game_state.graph.edges)
-        
+        # Core edge state mapping (0 = Unknown, 1 = Line, -1 = Cross)
+        edge_states = {e: 0 for e in self.all_edges}
+        for e in self.game_state.graph.edges:
+            edge_states[e] = 1
+            
         start_time = time.time()
-        success = self._backtrack(current_edges, 0, ui_callback, delay)
+        success = self._backtrack(edge_states, ui_callback, delay)
         end_time = time.time()
+
+        final_edges = set(e for e, st in edge_states.items() if st == 1)
 
         return {
             "success": success,
-            "edges": current_edges if success else set(),
+            "edges": final_edges if success else set(self.game_state.graph.edges),
             "nodes_visited": self.nodes_visited,
             "time_taken": end_time - start_time,
-            "cache_hits": len([v for v in self.dp_cache.values() if v is False])
+            "cache_hits": self.cache_hits
         }
 
-    def _get_state_string(self, current_edges):
-        """
-        Serializes the current board state into a hashable string.
-        """
-        # Sorting ensures the exact same edges drawn in a different order are recognized as the same state.
-        return str(sorted(list(current_edges)))
-
-    def _backtrack(self, current_edges, edge_index, ui_callback, delay):
+    def _backtrack(self, edge_states, ui_callback, delay):
         self.nodes_visited += 1
-        
-        # 1. DP Memoization Check (Cache Hit)
-        # O(1) return if we already evaluated this exact sub-problem mapping
-        state_key = self._get_state_string(current_edges)
+
+        # O(E) precalculations for immediate DP pruning constraints
+        vertex_deg = {}
+        vertex_unks = {}
+        for edge, state in edge_states.items():
+            u, v = edge
+            if state == 1:
+                vertex_deg[u] = vertex_deg.get(u, 0) + 1
+                vertex_deg[v] = vertex_deg.get(v, 0) + 1
+            elif state == 0:
+                vertex_unks[u] = vertex_unks.get(u, 0) + 1
+                vertex_unks[v] = vertex_unks.get(v, 0) + 1
+
+        cell_lines = {}
+        cell_unks = {}
+        for cell, clue in self.clues.items():
+            lines = sum(1 for e in self.cell_edges[cell] if edge_states[e] == 1)
+            unks = sum(1 for e in self.cell_edges[cell] if edge_states[e] == 0)
+            cell_lines[cell] = lines
+            cell_unks[cell] = unks
+
+        # 1. Fast Validity Constraint Pruning
+        if not self._is_valid(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks):
+            return False
+
+        # 2. DP Memoization Check (Subproblem caching)
+        state_key = tuple(edge_states[e] for e in self.all_edges)
         if state_key in self.dp_cache:
+            self.cache_hits += 1
             return self.dp_cache[state_key]
 
-        # 2. Check Win Condition
-        if self._shallow_win_check(current_edges):
-            self.dp_cache[state_key] = True
-            return True
-
-        # 3. Base Case: Searched all edges
-        if edge_index >= len(self.all_edges):
+        # 3. Dynamic Node Routing via Constraint Propagation 
+        unknown_edge = self._get_best_unknown_edge(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks)
+        
+        if unknown_edge is None:
+            # Base Case: Exhausted all edges
+            if self._is_single_loop_and_complete(edge_states, vertex_deg, cell_lines):
+                self.dp_cache[state_key] = True
+                return True
             self.dp_cache[state_key] = False
             return False
 
-        edge = self.all_edges[edge_index]
-        u, v = edge
-
-        # Branch A: Try WITH the edge
-        if edge not in current_edges:
-            if self._is_locally_valid(current_edges, u, v):
-                current_edges.add(edge)
+        # Multi-branch Recursion
+        for guess in [1, -1]:
+            edge_states[unknown_edge] = guess
+            
+            # Conditionally decouple UI rendering for ultra-fast time benchmarks via delay controls
+            if ui_callback and delay > 0:
+                ui_callback(set(e for e, st in edge_states.items() if st == 1))
+                time.sleep(delay)
                 
-                # UI Real-time playback integration
-                if ui_callback:
-                    ui_callback(current_edges)
-                    if delay > 0:
-                        time.sleep(delay)
-
-                if self._backtrack(current_edges, edge_index + 1, ui_callback, delay):
-                    self.dp_cache[state_key] = True
-                    return True
-                    
-                # Backtrack (Revert)
-                current_edges.remove(edge)
+            if self._backtrack(edge_states, ui_callback, delay):
+                self.dp_cache[state_key] = True
+                return True
                 
-                if ui_callback:
-                    ui_callback(current_edges)
-                    if delay > 0:
-                        time.sleep(delay)
-
-        # Branch B: Try WITHOUT the edge
-        if self._backtrack(current_edges, edge_index + 1, ui_callback, delay):
-            self.dp_cache[state_key] = True
-            return True
-
-        # 4. DP Memoization Save (Dead End)
-        # Record that navigating from this board state inevitably leads to a failure.
+        # Revert 
+        edge_states[unknown_edge] = 0
         self.dp_cache[state_key] = False
         return False
 
-    def _is_locally_valid(self, edges, u, v):
-        """Fast constraint and branching validation."""
-        edges.add((u, v))
-        degrees = {}
-        for (a, b) in edges:
-            degrees[a] = degrees.get(a, 0) + 1
-            degrees[b] = degrees.get(b, 0) + 1
-            if degrees[a] > 2 or degrees[b] > 2:
-                edges.remove((u, v))
-                return False
-                
-        for r in range(self.rows):
-            for c in range(self.cols):
-                if (r, c) in self.clues:
-                    count = 0
-                    if tuple(sorted(((r, c), (r, c+1)))) in edges: count += 1
-                    if tuple(sorted(((r+1, c), (r+1, c+1)))) in edges: count += 1
-                    if tuple(sorted(((r, c), (r+1, c)))) in edges: count += 1
-                    if tuple(sorted(((r, c+1), (r+1, c+1)))) in edges: count += 1
-                    if count > self.clues[(r, c)]:
-                        edges.remove((u, v))
-                        return False
-        edges.remove((u, v))
+    def _is_valid(self, edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks):
+        for deg in vertex_deg.values():
+            if deg > 2: return False
+
+        for v, deg in vertex_deg.items():
+            if deg == 1 and vertex_unks.get(v, 0) == 0:
+                return False  # Dead un-closed branch
+
+        for cell, clue in self.clues.items():
+            lines = cell_lines[cell]
+            unks = cell_unks[cell]
+            if lines > clue: return False
+            if lines + unks < clue: return False
+
+        # Premature Multi-Loop Cycle Detection
+        active_vertices = [v for v, deg in vertex_deg.items() if deg > 0]
+        if not active_vertices: return True
+            
+        adj = {v: [] for v in active_vertices}
+        for edge, state in edge_states.items():
+            if state == 1:
+                u, v = edge
+                adj[u].append(v)
+                adj[v].append(u)
+        
+        visited = set()
+        cycles_found = 0
+        
+        for v in active_vertices:
+            if v not in visited:
+                q = [v]
+                comp_visited = {v}
+                is_cycle = True
+                while q:
+                    curr = q.pop(0)
+                    if vertex_deg.get(curr, 0) != 2:
+                        is_cycle = False
+                    for nxt in adj[curr]:
+                        if nxt not in comp_visited:
+                            comp_visited.add(nxt)
+                            q.append(nxt)
+                visited.update(comp_visited)
+                if is_cycle:
+                    cycles_found += 1
+                    
+        if cycles_found > 0:
+            if cycles_found > 1: return False 
+            if len(visited) < len(active_vertices): return False 
+            for cell, clue in self.clues.items():
+                if cell_lines[cell] < clue: return False 
+                    
         return True
 
-    def _shallow_win_check(self, edges):
-        if not edges: return False
-        
-        degrees = {}
-        for (u, v) in edges:
-            degrees[u] = degrees.get(u, 0) + 1
-            degrees[v] = degrees.get(v, 0) + 1
-        
-        for _, deg in degrees.items():
-            if deg != 2:
-                return False
+    def _get_best_unknown_edge(self, edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks):
+        best_edge = None
+        best_score = -1
+
+        for edge, state in edge_states.items():
+            if state == 0:
+                score = 0
+                u, v = edge
+                du = vertex_deg.get(u, 0)
+                dv = vertex_deg.get(v, 0)
+                uu = vertex_unks.get(u, 0)
+                uv = vertex_unks.get(v, 0)
                 
-        for r in range(self.rows):
-            for c in range(self.cols):
-                if (r, c) in self.clues:
-                    count = 0
-                    if tuple(sorted(((r, c), (r, c+1)))) in edges: count += 1
-                    if tuple(sorted(((r+1, c), (r+1, c+1)))) in edges: count += 1
-                    if tuple(sorted(((r, c), (r+1, c)))) in edges: count += 1
-                    if tuple(sorted(((r, c+1), (r+1, c+1)))) in edges: count += 1
-                    if count != self.clues[(r, c)]:
-                        return False
-        return True
+                # Implicit Constraint Propagation (identifying mathematically forced lines/crosses)
+                if (du == 1 and uu == 1) or (dv == 1 and uv == 1):
+                    score += 10000 
+                elif du == 2 or dv == 2:
+                    score += 10000 
+                elif (du == 0 and uu == 1) or (dv == 0 and uv == 1):
+                    score += 10000 
+                    
+                if du == 1 or dv == 1:
+                    score += 100 
+                
+                for cell in self.edge_to_cells[edge]:
+                    clue = self.clues.get(cell)
+                    if clue is not None:
+                        lines = cell_lines[cell]
+                        unks = cell_unks[cell]
+                        
+                        if lines == clue:
+                            score += 10000 
+                        elif lines + unks == clue:
+                            score += 10000 
+                        score += (4 - unks) * 10
+
+                if score > best_score:
+                    best_score = score
+                    best_edge = edge
+                    if best_score >= 10000:
+                        return best_edge
+                        
+        return best_edge
+
+    def _is_single_loop_and_complete(self, edge_states, vertex_deg, cell_lines):
+        for deg in vertex_deg.values():
+            if deg != 2: return False
+                
+        for cell, clue in self.clues.items():
+            if cell_lines[cell] != clue: return False
+                
+        active_vertices = [v for v, deg in vertex_deg.items() if deg > 0]
+        if not active_vertices: return False
+            
+        start_node = active_vertices[0]
+        adj = {v: [] for v in active_vertices}
+        for edge, state in edge_states.items():
+            if state == 1:
+                u, v = edge
+                adj[u].append(v)
+                adj[v].append(u)
+                
+        visited = set([start_node])
+        q = [start_node]
+        while q:
+            curr = q.pop(0)
+            for nxt in adj[curr]:
+                if nxt not in visited:
+                    visited.add(nxt)
+                    q.append(nxt)
+                    
+        return len(visited) == len(active_vertices)
