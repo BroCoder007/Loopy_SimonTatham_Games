@@ -52,25 +52,8 @@ class DPBacktrackingSolver:
         edge_states = {e: 0 for e in self.all_edges}
         for e in self.game_state.graph.edges:
             edge_states[e] = 1
-            
-        start_time = time.time()
-        success = self._backtrack(edge_states, ui_callback, delay)
-        end_time = time.time()
 
-        final_edges = set(e for e, st in edge_states.items() if st == 1)
-
-        return {
-            "success": success,
-            "edges": final_edges if success else set(self.game_state.graph.edges),
-            "nodes_visited": self.nodes_visited,
-            "time_taken": end_time - start_time,
-            "cache_hits": self.cache_hits
-        }
-
-    def _backtrack(self, edge_states, ui_callback, delay):
-        self.nodes_visited += 1
-
-        # O(E) precalculations for immediate DP pruning constraints
+        # O(E) precalculations ONCE for incremental updates
         vertex_deg = {}
         vertex_unks = {}
         for edge, state in edge_states.items():
@@ -89,9 +72,26 @@ class DPBacktrackingSolver:
             unks = sum(1 for e in self.cell_edges[cell] if edge_states[e] == 0)
             cell_lines[cell] = lines
             cell_unks[cell] = unks
+            
+        start_time = time.time()
+        success = self._backtrack(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, ui_callback, delay, added_line=False)
+        end_time = time.time()
+
+        final_edges = set(e for e, st in edge_states.items() if st == 1)
+
+        return {
+            "success": success,
+            "edges": final_edges if success else set(self.game_state.graph.edges),
+            "nodes_visited": self.nodes_visited,
+            "time_taken": end_time - start_time,
+            "cache_hits": self.cache_hits
+        }
+
+    def _backtrack(self, edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, ui_callback, delay, added_line):
+        self.nodes_visited += 1
 
         # 1. Fast Validity Constraint Pruning
-        if not self._is_valid(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks):
+        if not self._is_valid(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, added_line):
             return False
 
         # 2. DP Memoization Check (Subproblem caching)
@@ -111,25 +111,54 @@ class DPBacktrackingSolver:
             self.dp_cache[state_key] = False
             return False
 
+        u, v = unknown_edge
+        affected_cells = self.edge_to_cells[unknown_edge]
+
         # Multi-branch Recursion
         for guess in [1, -1]:
+            # Apply Delta
             edge_states[unknown_edge] = guess
+            vertex_unks[u] -= 1
+            vertex_unks[v] -= 1
+            for c in affected_cells:
+                if c in cell_unks:
+                    cell_unks[c] -= 1
+            
+            if guess == 1:
+                vertex_deg[u] = vertex_deg.get(u, 0) + 1
+                vertex_deg[v] = vertex_deg.get(v, 0) + 1
+                for c in affected_cells:
+                    if c in cell_lines:
+                        cell_lines[c] += 1
             
             # Conditionally decouple UI rendering for ultra-fast time benchmarks via delay controls
             if ui_callback and delay > 0:
                 ui_callback(set(e for e, st in edge_states.items() if st == 1))
                 time.sleep(delay)
                 
-            if self._backtrack(edge_states, ui_callback, delay):
+            if self._backtrack(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, ui_callback, delay, added_line=(guess == 1)):
                 self.dp_cache[state_key] = True
                 return True
                 
-        # Revert 
-        edge_states[unknown_edge] = 0
+            # Revert Delta
+            if guess == 1:
+                vertex_deg[u] -= 1
+                vertex_deg[v] -= 1
+                for c in affected_cells:
+                    if c in cell_lines:
+                        cell_lines[c] -= 1
+            
+            vertex_unks[u] += 1
+            vertex_unks[v] += 1
+            for c in affected_cells:
+                if c in cell_unks:
+                    cell_unks[c] += 1
+            edge_states[unknown_edge] = 0
+            
         self.dp_cache[state_key] = False
         return False
 
-    def _is_valid(self, edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks):
+    def _is_valid(self, edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, added_line):
         for deg in vertex_deg.values():
             if deg > 2: return False
 
@@ -138,12 +167,15 @@ class DPBacktrackingSolver:
                 return False  # Dead un-closed branch
 
         for cell, clue in self.clues.items():
-            lines = cell_lines[cell]
-            unks = cell_unks[cell]
+            lines = cell_lines.get(cell, 0)
+            unks = cell_unks.get(cell, 0)
             if lines > clue: return False
             if lines + unks < clue: return False
 
-        # Premature Multi-Loop Cycle Detection
+        # Premature Multi-Loop Cycle Detection (ONLY run if we just added a line)
+        if not added_line:
+            return True
+            
         active_vertices = [v for v, deg in vertex_deg.items() if deg > 0]
         if not active_vertices: return True
             
@@ -178,7 +210,7 @@ class DPBacktrackingSolver:
             if cycles_found > 1: return False 
             if len(visited) < len(active_vertices): return False 
             for cell, clue in self.clues.items():
-                if cell_lines[cell] < clue: return False 
+                if cell_lines.get(cell, 0) < clue: return False 
                     
         return True
 
