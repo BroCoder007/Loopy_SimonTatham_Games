@@ -3,10 +3,6 @@ import time
 class DPBacktrackingSolver:
     """
     Phase 3: Highly Optimized DP & Backtracking Solver
-    Features:
-    - Smart Edge Selection Heuristic (Implicit Constraint Propagation)
-    - Early Cycle Detection to aggressively prune dead-end loops
-    - True DP State Memoization hashing on the array of edges
     """
     def __init__(self, game_state):
         self.game_state = game_state
@@ -43,15 +39,16 @@ class DPBacktrackingSolver:
                 edges.append(tuple(sorted(((r, c), (r+1, c)))))
         return tuple(edges)
 
-    def solve(self, ui_callback=None, delay=0.0):
+    def solve(self, ui_callback=None, delay=0.0, ignore_current_edges=False):
         self.dp_cache.clear()
         self.nodes_visited = 0
         self.cache_hits = 0
         
         # Core edge state mapping (0 = Unknown, 1 = Line, -1 = Cross)
         edge_states = {e: 0 for e in self.all_edges}
-        for e in self.game_state.graph.edges:
-            edge_states[e] = 1
+        if not ignore_current_edges:
+            for e in self.game_state.graph.edges:
+                edge_states[e] = 1
 
         # O(E) precalculations ONCE for incremental updates
         vertex_deg = {}
@@ -94,7 +91,7 @@ class DPBacktrackingSolver:
         if not self._is_valid(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, added_line):
             return False
 
-        # 2. DP Memoization Check (Subproblem caching)
+        # 2. DP Memoization Check (Subproblem caching) 
         state_key = tuple(edge_states[e] for e in self.all_edges)
         if state_key in self.dp_cache:
             self.cache_hits += 1
@@ -137,7 +134,7 @@ class DPBacktrackingSolver:
                 time.sleep(delay)
                 
             if self._backtrack(edge_states, vertex_deg, vertex_unks, cell_lines, cell_unks, ui_callback, delay, added_line=(guess == 1)):
-                self.dp_cache[state_key] = True
+                # self.dp_cache[state_key] = True
                 return True
                 
             # Revert Delta
@@ -260,7 +257,7 @@ class DPBacktrackingSolver:
 
     def _is_single_loop_and_complete(self, edge_states, vertex_deg, cell_lines):
         for deg in vertex_deg.values():
-            if deg != 2: return False
+            if deg != 0 and deg != 2: return False
                 
         for cell, clue in self.clues.items():
             if cell_lines[cell] != clue: return False

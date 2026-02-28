@@ -25,7 +25,6 @@ from logic.solvers.solver_errors import (
 )
 from logic.solvers.solver_interface import AbstractSolver, HintPayload
 from logic.validators import check_win_condition, is_valid_move
-from logic.solvers.dp_backtracking_solver import DPBacktrackingSolver
 
 Move = Tuple[Tuple[int, int], Tuple[int, int]]
 Region = Tuple[int, int, int, int]  # (r_min, c_min, r_max, c_max) on cell coordinates
@@ -78,7 +77,7 @@ class _UnionFind:
         return True
 
 
-class DivideConquerSolver(AbstractSolver):
+class LegacyDivideConquerSolver(AbstractSolver):
     def __init__(self, game_state: Any):
         self.game_state = game_state
         self._last_explanation: str = ""
@@ -104,12 +103,14 @@ class DivideConquerSolver(AbstractSolver):
         if self._state_explosion_detected:
             self._publish_state_explosion_message()
             return None
-            
-        move, reason = self._run_divide_and_conquer()
-        if move is not None:
+        try:
+            move, reason = self._run_divide_and_conquer()
+            if move is not None:
+                self._last_explanation = f"Using Divide & Conquer Strategy: {reason}"
+                return move
             self._last_explanation = f"Using Divide & Conquer Strategy: {reason}"
-            return move
-        self._last_explanation = f"Using Divide & Conquer Strategy: {reason}"
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
         return None
 
     def generate_hint(self, board: Any = None) -> HintPayload:
@@ -133,12 +134,20 @@ class DivideConquerSolver(AbstractSolver):
                 "explanation": "Hints are only available during your turn.",
             }
 
-        move, reason = self._run_divide_and_conquer()
-        return {
-            "move": move,
-            "strategy": "Divide & Conquer",
-            "explanation": f"Strategy: Divide & Conquer\nReason: {reason}",
-        }
+        try:
+            move, reason = self._run_divide_and_conquer()
+            return {
+                "move": move,
+                "strategy": "Divide & Conquer",
+                "explanation": f"Strategy: Divide & Conquer\nReason: {reason}",
+            }
+        except ControlledStateExplosionError:
+            self._handle_state_explosion()
+            return {
+                "move": None,
+                "strategy": "Divide & Conquer",
+                "explanation": STATE_SPACE_EXPLOSION_MESSAGE,
+            }
 
     def register_move(self, move: Move):
         self.game_state.last_cpu_move_info = {
@@ -202,43 +211,25 @@ class DivideConquerSolver(AbstractSolver):
         if not self.game_state.clues:
             return None, "No clues are present; no deterministic forced move exists."
 
-        # Substitute pure D&C logic with fast Backtracking DP solver
-        solver = DPBacktrackingSolver(self.game_state)
-        result = solver.solve()
-        
-        # Backtracking Rescue: If current board is unsolvable (user made a mistake), compute the global truth.
-        if not result["success"]:
-             result = solver.solve(ignore_current_edges=True)
-        
-        if not result["success"]:
-             return None, "No globally valid single-loop completion exists for this board."
-             
-        final_edges = result["edges"]
-        current_edges = self.game_state.graph.edges
-        
-        # Priority 1: Remove extra edges (Correction)
-        for edge in self._all_board_edges():
-             if edge in current_edges and edge not in final_edges:
-                  return edge, f"Selected edge to remove that is not part of the valid solution."
+        full_region = (0, 0, self.game_state.rows - 1, self.game_state.cols - 1)
+        full_configs = self.solve_region(full_region, depth=0)
+        self._assert_config_limit(len(full_configs), "dnc_full_region_configs")
+        if not full_configs:
+            return None, "No globally valid single-loop completion exists for this board."
 
-        # Priority 2: Add required edges
-        for edge in self._all_board_edges():
-             if edge in final_edges and edge not in current_edges:
-                  valid, _ = is_valid_move(self.game_state.graph, edge[0], edge[1], self.game_state.clues)
-                  if valid:
-                       return edge, f"Selected next required edge towards full solution."
-                       
-        return None, "Board already matches the valid solution."
-        
-    def _all_board_edges(self) -> List[Move]:
-        edges = []
-        for r in range(self.game_state.rows + 1):
-            for c in range(self.game_state.cols):
-                edges.append(tuple(sorted(((r, c), (r, c+1)))))
-        for r in range(self.game_state.rows):
-            for c in range(self.game_state.cols + 1):
-                edges.append(tuple(sorted(((r, c), (r+1, c)))))
-        return edges
+        chosen_cfg = self._select_deterministic_configuration(full_configs)
+        move, reason = self._select_move_from_configuration(chosen_cfg, len(full_configs))
+        if move is None:
+            return None, reason
+
+        self._log_trace(
+            depth=0,
+            region=full_region,
+            merge_stage="forced_move_selection",
+            explanation=reason,
+            move=move,
+        )
+        return move, reason
 
     def solve_region(self, region: Region, depth: int = 0) -> List[RegionConfiguration]:
         """

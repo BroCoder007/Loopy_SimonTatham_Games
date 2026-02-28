@@ -24,7 +24,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from logic.solvers.solver_interface import AbstractSolver, HintPayload
 from logic.solvers.merge_sort import merge_sort
-from logic.solvers.dp_backtracking_solver import DPBacktrackingSolver
 from logic.solvers.solver_errors import (
     ControlledStateExplosionError,
     STATE_SPACE_EXPLOSION_MESSAGE,
@@ -39,7 +38,7 @@ ParentRef = Tuple[StateKey, Tuple[Edge, ...]]
 ParentLayer = Dict[StateKey, List[ParentRef]]
 
 
-class DynamicProgrammingSolver(AbstractSolver):
+class LegacyDynamicProgrammingSolver(AbstractSolver):
     def __init__(self, game_state: Any):
         self.game_state = game_state
         self.rows = game_state.rows
@@ -320,19 +319,23 @@ class DynamicProgrammingSolver(AbstractSolver):
                     )
                     if valid:
                         summary = (
-                            f"We can't find a complete solution yet, but this edge "
-                            f"is mathematically forced by the clues. Adding edge {edge}."
+                            f"Scanning {total_potential} edges. "
+                            f"Progress: {placed_count} edges ({progress_pct}%). "
+                            f"No complete loop found yet."
+                            f"Using constraint analysis to add edge {edge} — "
+                            f"validated against all {len(self.game_state.clues)} clue constraints."
                         )
                         _set_meta(edge, summary)
-                        return (edge, "include", summary)
+                        return (edge, "include", f"DP certainty-based selection: {summary}")
 
             edge = merge_sort(all_potential)[0]
             summary = (
-                f"We checked all possible moves and the clues. "
-                f"Trying edge {edge} to see where it leads."
+                f"All constraint checks done on {total_potential} edges. "
+                f"Board {progress_pct}% filled. "
+                f"Trying edge {edge}."
             )
             _set_meta(edge, summary)
-            return (edge, "include", summary)
+            return (edge, "include", f"DP certainty-based selection: {summary}")
 
         # Solution space computed
         num_solutions = len(all_solutions)
@@ -349,11 +352,12 @@ class DynamicProgrammingSolver(AbstractSolver):
             if removable:
                 edge = removable[0]
                 summary = (
-                    f"Our DP solver found that edge {edge} is NEVER used "
-                    f"in the correct solution. It must be a mistake, removing it."
+                    f"Analyzed {num_solutions} solution(s). "
+                    f"Edge {edge} appears in 0/{num_solutions} solutions — "
+                    f"must be removed."
                 )
                 _set_meta(edge, summary, num_solutions, 0, 1.0)
-                return (edge, "exclude", summary)
+                return (edge, "exclude", f"DP certainty-based selection: {summary}")
 
         if not undecided:
             if all_solutions:
@@ -364,18 +368,20 @@ class DynamicProgrammingSolver(AbstractSolver):
                 for edge in merge_sort(list(current_edges)):
                     if edge not in best_solution:
                         summary = (
-                            f"This edge {edge} is not part of the best valid loop. "
-                            f"Removing it to fix the path."
+                            f"Board {progress_pct}% complete. "
+                            f"Found {num_solutions} solution(s). "
+                            f"Edge {edge} not in best loop — removing."
                         )
                         _set_meta(edge, summary, num_solutions, 0, 1.0)
-                        return (edge, "exclude", summary)
+                        return (edge, "exclude", f"DP certainty-based selection: {summary}")
 
             edge = merge_sort(all_potential)[0]
             summary = (
-                f"The board is fully resolved! The loop is correct."
+                f"Board fully resolved ({progress_pct}% filled, "
+                f"{num_solutions} solutions analyzed)."
             )
             _set_meta(edge, summary, num_solutions, 0, 1.0)
-            return (edge, "include", summary)
+            return (edge, "include", f"DP certainty-based selection: {summary}")
 
         # STEP 2 — Frequency analysis
         count_on, total = self._frequency_analysis(all_solutions, undecided)
@@ -391,37 +397,36 @@ class DynamicProgrammingSolver(AbstractSolver):
         freq = count_on.get(move, 0)
 
         summary = (
-            f"Our DP Backtracking solver determined that "
-            f"{'adding' if action == 'include' else 'removing'} edge {move} "
-            f"is the best next step to form the correct loop."
+            f"Analyzed {total} solution(s) on {self.rows}x{self.cols} grid. "
+            f"{len(undecided)} edges left, {progress_pct}% progress. "
+            f"Edge {move} appears in {freq}/{total} solutions."
+            f"{'Adding' if action == 'include' else 'Removing'} this edge "
+            f"maximizes convergence toward the correct loop."
         )
 
         _set_meta(move, summary, total, freq, normalized_certainty)
-        return move, action, summary
+        return move, action, explanation
 
     def _compute_all_valid_solutions(self) -> List[Set[Edge]]:
         """
         STEP 1: Compute full valid solution space.
 
-        Replaced the heavy iterative DP row-sweep with the highly optimized
-        Backtracking DP solver that utilizes smart pruning.
+        Uses existing DP solver to compute ALL valid solutions respecting:
+        - Current board state
+        - Forced edges (edges already on board)
+        - Forbidden edges (none currently)
+
+        Raises RuntimeError if no solution exists (board invalid).
         """
-        solver = DPBacktrackingSolver(self.game_state)
-        result = solver.solve()
+        solutions = self._run_dp(self.game_state, limit=None)
 
-        # Backtracking Rescue: If user board is invalid, compute pure state
-        if not result["success"]:
-             result = solver.solve(ignore_current_edges=True)
-
-        if not result["success"]:
+        if not solutions:
             raise RuntimeError(
                 "DP: No valid solutions exist for the current board state. "
                 "The board may be in an invalid configuration."
             )
 
-        # Return the valid edge set enclosed as a single element in a list
-        # to match the old signature Expected logic relying on List[Set[Edge]]
-        return [result["edges"]]
+        return solutions
 
     def _frequency_analysis(
         self,
@@ -479,7 +484,8 @@ class DynamicProgrammingSolver(AbstractSolver):
                 return (
                     edge,
                     "include",
-                    f"DP Solver: Edge {edge} is required in the final solution."
+                    f"DP certainty-based selection: Edge {edge} appears in "
+                    f"{total}/{total} solutions (forced inclusion).",
                 )
 
         # Priority 2: Forced exclusion (edge in NO solutions)
@@ -488,7 +494,8 @@ class DynamicProgrammingSolver(AbstractSolver):
                 return (
                     edge,
                     "exclude",
-                    f"DP Solver: Edge {edge} is never used in the final solution."
+                    f"DP certainty-based selection: Edge {edge} appears in "
+                    f"0/{total} solutions (forced exclusion).",
                 )
 
         # Priority 3: Maximum certainty score
@@ -517,7 +524,9 @@ class DynamicProgrammingSolver(AbstractSolver):
         return (
             best_edge,
             action,
-            f"DP Solver: Edge {best_edge} — action={action_label}."
+            f"DP certainty-based selection: Edge {best_edge} — "
+            f"{c}/{total} solutions contain it "
+            f"(certainty={best_certainty:.4f}, action={action_label}).",
         )
 
     # ------------------------------------------------------------------

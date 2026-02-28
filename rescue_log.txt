@@ -1,0 +1,6 @@
+Starting test...
+Solution size: 10
+Adding bad edge: ((0, 0), (0, 1))
+D&C returned: move=((0, 0), (0, 1)), reason=Selected edge to remove that is not part of the valid solution.
+First solve: success=False
+Second solve (ignore edges): success=True, size=10

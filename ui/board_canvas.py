@@ -81,7 +81,14 @@ class BoardCanvas(tk.Canvas):
         
         # Draw Active Edges
         for edge in self.game_state.graph.edges:
-            self._draw_edge(edge, TEXT_COLOR, width=3) # White lines
+            color = TEXT_COLOR
+            width = 3
+            # Highlight the last CPU move in yellow
+            if self.game_state.last_cpu_move_info and edge == self.game_state.last_cpu_move_info.get("move"):
+                color = APPLE_YELLOW
+                width = 4
+                
+            self._draw_edge(edge, color, width=width)
             
         # Draw Hovered Edge
         if self.hovered_edge:

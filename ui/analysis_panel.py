@@ -54,9 +54,19 @@ class LiveAnalysisPanel(tk.Toplevel):
         # Legend
         legend_frame = tk.Frame(header, bg=BG_COLOR)
         legend_frame.pack(side=tk.RIGHT)
-        for label, color in [("Greedy", "#30D158"), ("D&C", "#FF9F0A"), ("DP", "#0A84FF")]:
+        for label, color in [("Without Backtracking (Legacy)", "#FF3B30"), ("With Backtracking (Current)", "#30D158")]:
             tk.Label(legend_frame, text="●", font=("Segoe UI", 12), bg=BG_COLOR, fg=color).pack(side=tk.LEFT, padx=(8, 2))
             tk.Label(legend_frame, text=label, font=("Segoe UI", 9), bg=BG_COLOR, fg=TEXT_COLOR).pack(side=tk.LEFT)
+
+        # Complexity Info
+        self.complexity_label = tk.Label(
+            header,
+            text="",
+            font=("Consolas", 10, "italic"),
+            bg=BG_COLOR,
+            fg="#FFCC00"  # Yellowish to make it pop
+        )
+        self.complexity_label.pack(side=tk.LEFT, padx=15)
 
         # ── Graphs Area ────────────────────────────────────────
         graph_frame = tk.Frame(self, bg=BG_COLOR)
@@ -90,9 +100,9 @@ class LiveAnalysisPanel(tk.Toplevel):
 
         columns = (
             "Move #",
-            "Greedy Move", "Greedy ms", "Greedy States",
-            "D&C Move", "D&C ms", "D&C Depth",
-            "DP Move", "DP ms", "DP States",
+            "Strategy",
+            "Legacy Move", "Legacy ms", "Legacy States",
+            "Current Move", "Current ms", "Current States",
         )
 
         style = ttk.Style()
@@ -122,14 +132,14 @@ class LiveAnalysisPanel(tk.Toplevel):
         )
 
         col_widths = {
-            "Move #": 55,
-            "Greedy Move": 120, "Greedy ms": 75, "Greedy States": 85,
-            "D&C Move": 120, "D&C ms": 75, "D&C Depth": 75,
-            "DP Move": 120, "DP ms": 75, "DP States": 85,
+            "Move #": 50,
+            "Strategy": 110,
+            "Legacy Move": 110, "Legacy ms": 85, "Legacy States": 95,
+            "Current Move": 110, "Current ms": 85, "Current States": 95,
         }
         for col in columns:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=col_widths.get(col, 80), anchor="center")
+            self.tree.column(col, width=col_widths.get(col, 100), anchor="center")
 
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -162,7 +172,17 @@ class LiveAnalysisPanel(tk.Toplevel):
         if not data:
             return
 
-        # 1. Update Table
+        # 1. Update Table & Complexity Label
+        strategy = self.game_state.solver_strategy
+        if strategy == "dynamic_programming":
+            self.complexity_label.config(text="Theory: Legacy DP is O(2^E) vs Current DP is O(V * 2^(E_rem))")
+        elif strategy == "divide_conquer":
+            self.complexity_label.config(text="Theory: Legacy D&C is O(2^(E/4) * 4) vs Current D&C is O(V * 2^(E_rem))")
+        elif strategy == "advanced_dp":
+            self.complexity_label.config(text="Theory: Legacy Adv DP is O(2^(E/4) * N) vs Current Adv DP is O(V * 2^(E_rem))")
+        else:
+            self.complexity_label.config(text="")
+
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -171,66 +191,60 @@ class LiveAnalysisPanel(tk.Toplevel):
         # 2. Extract data series
         moves = [r.get("move_number") for r in data]
 
-        greedy_times = [self._safe_float(r.get("greedy_time")) for r in data]
-        dnc_times = [self._safe_float(r.get("dnc_time")) for r in data]
-        dp_times = [self._safe_float(r.get("dp_time")) for r in data]
+        legacy_times = [self._safe_float(r.get("legacy_time")) for r in data]
+        current_times = [self._safe_float(r.get("current_time")) for r in data]
 
-        greedy_states = [self._safe_int(r.get("greedy_states")) for r in data]
-        dnc_states = [self._safe_int(r.get("dnc_states")) for r in data]
-        dp_states = [self._safe_int(r.get("dp_states")) for r in data]
+        legacy_states = [self._safe_int(r.get("legacy_states")) for r in data]
+        current_states = [self._safe_int(r.get("current_states")) for r in data]
 
         for row in data:
             values = (
                 row.get("move_number"),
-                row.get("greedy_move"), row.get("greedy_time"), row.get("greedy_states"),
-                row.get("dnc_move"), row.get("dnc_time"), row.get("dnc_states"),
-                row.get("dp_move"), row.get("dp_time"), row.get("dp_states"),
+                row.get("strategy"),
+                row.get("legacy_move"), row.get("legacy_time"), row.get("legacy_states"),
+                row.get("current_move"), row.get("current_time"), row.get("current_states"),
             )
             
-            # Check for Greedy Failure vs Others Success
-            g_move = str(row.get("greedy_move"))
-            d_move = str(row.get("dnc_move"))
-            dp_move = str(row.get("dp_move"))
+            # Highlight timeouts or errors in legacy
+            l_move = str(row.get("legacy_move"))
             
             tags = ()
-            if g_move in ("None", "N/A", "Timeout") and (d_move not in ("None", "N/A", "Timeout") or dp_move not in ("None", "N/A", "Timeout")):
-                 tags = ("greedy_fail",)
+            if l_move in ("None", "N/A", "Timeout", "Error"):
+                 tags = ("legacy_fail",)
                  
             self.tree.insert("", "end", values=values, tags=tags)
 
         import itertools
-        greedy_cum = list(itertools.accumulate(greedy_times))
-        dnc_cum = list(itertools.accumulate(dnc_times))
-        dp_cum = list(itertools.accumulate(dp_times))
+        legacy_cum = list(itertools.accumulate(legacy_times))
+        current_cum = list(itertools.accumulate(current_times))
 
         # 3. Clear and redraw
         self.ax1.clear()
         self.ax2.clear()
         self.ax3.clear()
 
-        c_greedy = "#30D158"
-        c_dnc = "#FF9F0A"
-        c_dp = "#0A84FF"
+        c_legacy = "#FF3B30"
+        c_current = "#30D158"
 
         # Graph 1: Execution Time
-        self._plot_line(self.ax1, moves, greedy_times, c_greedy, "Greedy")
-        self._plot_line(self.ax1, moves, dnc_times, c_dnc, "D&C")
-        self._plot_line(self.ax1, moves, dp_times, c_dp, "DP")
+        self._plot_line(self.ax1, moves, legacy_times, c_legacy, "Without Backtracking")
+        self._plot_line(self.ax1, moves, current_times, c_current, "With Backtracking")
         self._style_axis(self.ax1, "Execution Time (ms)")
+        self.ax1.set_yscale('symlog', linthresh=1.0)
         self.ax1.legend(fontsize=8, facecolor=CARD_BG, edgecolor="#555555", labelcolor=TEXT_COLOR)
 
         # Graph 2: States / Depth
-        self._plot_line(self.ax2, moves, greedy_states, c_greedy, "Greedy")
-        self._plot_line(self.ax2, moves, dnc_states, c_dnc, "D&C")
-        self._plot_line(self.ax2, moves, dp_states, c_dp, "DP")
-        self._style_axis(self.ax2, "States / Depth")
+        self._plot_line(self.ax2, moves, legacy_states, c_legacy, "Without Backtracking")
+        self._plot_line(self.ax2, moves, current_states, c_current, "With Backtracking")
+        self._style_axis(self.ax2, "States Explored")
+        self.ax2.set_yscale('symlog', linthresh=1.0)
         self.ax2.legend(fontsize=8, facecolor=CARD_BG, edgecolor="#555555", labelcolor=TEXT_COLOR)
 
         # Graph 3: Cumulative Time
-        self._plot_line(self.ax3, moves, greedy_cum, c_greedy, "Greedy")
-        self._plot_line(self.ax3, moves, dnc_cum, c_dnc, "D&C")
-        self._plot_line(self.ax3, moves, dp_cum, c_dp, "DP")
+        self._plot_line(self.ax3, moves, legacy_cum, c_legacy, "Without Backtracking")
+        self._plot_line(self.ax3, moves, current_cum, c_current, "With Backtracking")
         self._style_axis(self.ax3, "Cumulative Time (ms)")
+        self.ax3.set_yscale('symlog', linthresh=1.0)
         self.ax3.legend(fontsize=8, facecolor=CARD_BG, edgecolor="#555555", labelcolor=TEXT_COLOR)
 
         self.canvas.draw()
