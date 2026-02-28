@@ -1,4 +1,4 @@
-    import tkinter as tk
+import tkinter as tk
 import time
 from threading import Thread
 from ui.styles import *

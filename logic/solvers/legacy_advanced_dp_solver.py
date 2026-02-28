@@ -20,7 +20,6 @@ from math import comb
 from typing import Any, List, Set, Tuple, Dict, Optional
 from logic.solvers.solver_interface import AbstractSolver, HintPayload
 from logic.validators import is_valid_move
-from logic.solvers.dp_backtracking_solver import DPBacktrackingSolver
 
 # Type aliases
 # Edge: ((r1, c1), (r2, c2)) sorted
@@ -58,7 +57,7 @@ class RegionSolution:
     def __repr__(self):
         return f"Region(loops={self.internal_loops}, sigs={self.top_sig}/{self.bottom_sig})"
 
-class AdvancedDPSolver(AbstractSolver):
+class LegacyAdvancedDPSolver(AbstractSolver):
     def __init__(self, game_state: Any):
         self.game_state = game_state
         self.rows = game_state.rows
@@ -84,7 +83,7 @@ class AdvancedDPSolver(AbstractSolver):
         if not self._solution_computed:
             self._compute_full_solution()
             
-        # Standard playback logic
+        # Standard playback logic (similar to other solvers)
         while self.current_move_index < len(self.solution_moves):
             move_data = self.solution_moves[self.current_move_index]
             move = move_data["move"]
@@ -108,11 +107,14 @@ class AdvancedDPSolver(AbstractSolver):
         """
         UI Hook.
         """
+        print("[AdvancedDPSolver] decide_move called.")
         if not self._solution_computed:
+            print("[AdvancedDPSolver] Computing full solution...")
             self._compute_full_solution()
             
         # Check if solution exists
         if not self._final_solution_edges:
+            print("[AdvancedDPSolver] No solution found in _final_solution_edges.")
             self.last_explanation = "No precomputed Advanced DP move is available."
             return [], None
 
@@ -122,18 +124,8 @@ class AdvancedDPSolver(AbstractSolver):
             valid, reason = is_valid_move(self.game_state.graph, move[0], move[1], self.game_state.clues)
             if valid:
                 self.last_explanation = move_data.get("explanation", "Advanced DP Move")
+                print(f"[AdvancedDPSolver] Decided move: {move}")
                 
-                from logic.solvers.solver_interface import MoveExplanation
-                self._last_move_metadata = MoveExplanation(
-                    mode="Advanced DP",
-                    scope="Global",
-                    decision_summary=self.last_explanation,
-                    highlight_cells=[],
-                    highlight_edges=[move],
-                    highlight_region=(0, 0, self.game_state.rows - 1, self.game_state.cols - 1),
-                    reasoning_data={"region_id": "Global"}
-                )
-
                 # Global Execution Trace Log
                 from logic.execution_trace import log_advanced_dp_move
                 log_advanced_dp_move(
@@ -145,41 +137,12 @@ class AdvancedDPSolver(AbstractSolver):
 
                 return [(move, 100)], move
             else:
+                print(f"[AdvancedDPSolver] Skipping invalid move: {move} ({reason})")
                 self.current_move_index += 1
                 
         self.last_explanation = "No more moves."
+        print("[AdvancedDPSolver] No more moves in solution_moves.")
         return [], None
-
-    def _compute_full_solution(self):
-        solver = DPBacktrackingSolver(self.game_state)
-        result = solver.solve()
-        
-        # Backtracking Rescue: If current board is unsolvable (user made a mistake), compute the global truth.
-        if not result["success"]:
-             result = solver.solve(ignore_current_edges=True)
-             
-        if result["success"]:
-             self._final_solution_edges = result["edges"]
-             self._solution_computed = True
-             
-             # Setup moves for playback
-             self.solution_moves = []
-             current_edges = self.game_state.graph.edges
-             all_edges = self._get_all_potential_edges()
-             
-             # First priority: Remove wrong edges (correction)
-             for edge in all_edges:
-                  if edge in current_edges and edge not in self._final_solution_edges:
-                       self.solution_moves.append({"move": edge, "explanation": "Advanced DP determined this edge violates the global loop and must be removed."})
-                       
-             # Second priority: Adding edges
-             for edge in all_edges:
-                  if edge in self._final_solution_edges and edge not in current_edges:
-                       self.solution_moves.append({"move": edge, "explanation": "Advanced DP determined this edge is globally forced."})
-                       
-        else:
-             self._final_solution_edges = set()
-             self._solution_computed = True
 
     def generate_hint(self, board: Any = None) -> HintPayload:
         """
@@ -241,8 +204,8 @@ class AdvancedDPSolver(AbstractSolver):
                 "move": edge,
                 "strategy": "Advanced DP Analysis",
                 "explanation": (
-                    f"Advanced DP: This edge appears in every single valid solution "
-                    f"that successfully combines the board sections."
+                    f"Advanced DP: This edge appears in every single solution "
+                    f"found by combining all {total_states} board sections."
                 )
             }
 
@@ -319,21 +282,38 @@ class AdvancedDPSolver(AbstractSolver):
     def _compute_full_merged_states_for_hint(self, max_states_per_merge: int = 100) -> List[RegionSolution]:
         """
         Compute merged DP states for hinting without board-edge filtering.
-        Substituted inner state tracking.
         """
-        solver = DPBacktrackingSolver(self.game_state)
-        result = solver.solve()
-        
-        # If user board is invalid, just compute raw solution for hint direction
-        if not result["success"]:
-             result = solver.solve(ignore_current_edges=True)
-        
-        if result["success"]:
-             edges = result["edges"]
-             s = RegionSolution(edges=edges, top_sig=(), bottom_sig=(), left_sig=(), right_sig=()) 
-             return [s]
-             
-        return []
+        # Divide grid into quadrants
+        mid_r = self.rows // 2
+        mid_c = self.cols // 2
+
+        quadrants = [
+            (0, mid_r, 0, mid_c),
+            (0, mid_r, mid_c, self.cols),
+            (mid_r, self.rows, 0, mid_c),
+            (mid_r, self.rows, mid_c, self.cols),
+        ]
+
+        q_results = []
+        for r0, r1, c0, c1 in quadrants:
+            solutions = sorted(
+                self._solve_region(r0, r1, c0, c1),
+                key=self._region_solution_sort_key
+            )
+            q_results.append(solutions)
+
+        if any(len(res) == 0 for res in q_results):
+            return []
+
+        top_states = self._merge_horizontal_limited(q_results[0], q_results[1], mid_c, 0, max_states_per_merge)
+        if not top_states:
+            return []
+
+        bottom_states = self._merge_horizontal_limited(q_results[2], q_results[3], mid_c, mid_r, max_states_per_merge)
+        if not bottom_states:
+            return []
+
+        return self._merge_vertical_limited(top_states, bottom_states, mid_r, 0, max_states_per_merge)
 
     def _filter_states_by_required_edges(self, full_states: List[RegionSolution], required_edges: Set[Edge]) -> List[Set[Edge]]:
         """
@@ -659,7 +639,19 @@ class AdvancedDPSolver(AbstractSolver):
         """
         Generate explanation for forced moves based on state analysis.
         """
-        explanation = f"Advanced DP Analysis: We checked all valid combinations for this region. "
+        region_stats = self._merge_stats.get('region_stats', {})
+        merge_details = self._merge_stats.get('merge_details', [])
+        
+        # Get region with most states for context
+        max_region = max(sorted(region_stats.items()), key=lambda x: x[1]['states']) if region_stats else None
+        region_id, region_info = max_region if max_region else ("Q1", {'states': 0})
+        
+        # Find the most constrained merge operation
+        best_merge = max(merge_details, key=lambda x: x.get('pruned_count', 0)) if merge_details else None
+        seam_location = best_merge.get('seam_location', 'unknown seam') if best_merge else "boundary"
+        
+        explanation = f"Advanced DP Analysis: Analyzed {region_info['states']} possibilities for section {region_id}. "
+        explanation += f"By checking boundary connections at {seam_location}, we ruled out invalid setups. "
         explanation += f"In every single remaining valid solution ({num_states} total), this edge MUST be a {'line' if is_inclusion else 'blank'}."
         
         return explanation
@@ -668,7 +660,19 @@ class AdvancedDPSolver(AbstractSolver):
         """
         Generate explanation when no deterministic move is available.
         """
+        region_stats = self._merge_stats.get('region_stats', {})
+        merge_details = self._merge_stats.get('merge_details', [])
+        
+        # Get region with most states for context
+        max_region = max(sorted(region_stats.items()), key=lambda x: x[1]['states']) if region_stats else None
+        region_id, region_info = max_region if max_region else ("Q1", {'states': 0})
+        
+        # Find the most constrained merge operation
+        best_merge = max(merge_details, key=lambda x: x.get('pruned_count', 0)) if merge_details else None
+        seam_location = best_merge.get('seam_location', 'unknown seam') if best_merge else "boundary"
+        
         explanation = f"Advanced DP Analysis: No guaranteed move found yet. "
+        explanation += f"We analyzed {region_info['states']} possibilities for {region_id} and checked connections at {seam_location}. "
         explanation += f"There are {num_states} valid solutions remaining, but none of them force a specific move right now."
         
         return explanation
@@ -710,9 +714,13 @@ class AdvancedDPSolver(AbstractSolver):
             pruned_count = relevant_merge['pruned_count']
             seam_location = relevant_merge['seam_location']
             
-            explanation = f"Advanced DP Analysis: "
-            explanation += f"When combining sections, most options were invalid. "
-            explanation += f"Only complete loops remain, and ALL of them require edge {edge}."
+            # Find region with most states for context
+            max_region = max(sorted(region_stats.items()), key=lambda x: x[1]['states']) if region_stats else None
+            region_id, region_info = max_region if max_region else ("Q1", {'states': 0})
+            
+            explanation = f"Advanced DP Analysis: Section {region_id} had {region_info['states']} possibilities. "
+            explanation += f"When combining sections at {seam_location}, most options were invalid. "
+            explanation += f"Only configurations that keep lines continuous remain, and ALL of them require edge {edge}."
             
             return explanation
         else:
@@ -732,8 +740,9 @@ class AdvancedDPSolver(AbstractSolver):
             successful_merges = relevant_merge['successful_merges']
             seam_location = relevant_merge['seam_location']
             constraint_violations = relevant_merge.get('constraint_violations', [])
-            explanation = f"Advanced DP Analysis: Edge {edge} connects two regions improperly. "
-            explanation += f"We checked {total_candidates} scenarios, and this edge was invalid in all of them."
+            
+            explanation = f"Advanced DP Analysis: Edge {edge} connects two regions improperly at {seam_location}. "
+            explanation += f"We checked {total_candidates} scenarios, and this edge was invalid in all of them (e.g. broken loops or dead ends)."
             
             return explanation
         else:
@@ -746,8 +755,9 @@ class AdvancedDPSolver(AbstractSolver):
         region_stats = self._merge_stats.get('region_stats', {})
         
         if region_stats:
-            explanation = f"Advanced DP Analysis: Analyzing the regions... "
-            explanation += f"Edge {edge} is necessary to make the lines connect properly across the board."
+            region_info = list(region_stats.values())[0]
+            explanation = f"Advanced DP Analysis: We analyzed {region_info['states']} options for each board section. "
+            explanation += f"Edge {edge} is necessary to make the lines connect properly across the boundaries."
             return explanation
         else:
             return f"Advanced DP Analysis: Edge {edge} is pushed by boundary logic."
@@ -765,7 +775,9 @@ class AdvancedDPSolver(AbstractSolver):
             pruned_count = best_merge.get('pruned_count', 0)
             total_candidates = best_merge.get('total_candidates', 1)
             seam_location = best_merge.get('seam_location', 'unknown seam')
-            explanation = f"Advanced DP Analysis: We removed this edge because it leads to a dead end. "
+            
+            explanation = f"Advanced DP Analysis: We removed this edge because it leads to a dead end at {seam_location}. "
+            explanation += f"We ruled out {pruned_count} of {total_candidates} possibilities here. "
             explanation += f"Using this edge would make it impossible to form a valid single loop."
             
             return explanation

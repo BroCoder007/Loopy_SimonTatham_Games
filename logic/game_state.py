@@ -38,9 +38,13 @@ class GameState:
         if game_mode in ["vs_cpu", "expert"]:
             if self.solver_strategy == "dynamic_programming":
                 self.cpu = DynamicProgrammingSolver(self)
-            elif self.solver_strategy == "divide_conquer":
-                self.cpu = DivideConquerSolver(self)
-            else:  # "greedy" -> default to D&C
+            elif self.solver_strategy == "advanced_dp":
+                from logic.solvers.advanced_dp_solver import AdvancedDPSolver
+                self.cpu = AdvancedDPSolver(self)
+            elif self.solver_strategy == "greedy":
+                from logic.solvers.greedy_solver import GreedySolver
+                self.cpu = GreedySolver(self)
+            else:
                 self.cpu = DivideConquerSolver(self)
             self.strategy_controller = StrategyController(self, self.solver_strategy)
         else:
@@ -88,11 +92,16 @@ class GameState:
         - greedy
         - divide_conquer
         - dynamic_programming
+        - advanced_dp
         """
         if strategy in ("divide_conquer", "divide_and_conquer"):
             return "divide_conquer"
         if strategy == "dynamic_programming":
             return "dynamic_programming"
+        if strategy in ("advanced_dp", "advanced", "adp"):
+            return "advanced_dp"
+        if strategy == "greedy":
+            return "greedy"
         return "divide_conquer" # Default for unknown
 
     def _initialize_edge_weights(self):

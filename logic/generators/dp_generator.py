@@ -57,7 +57,14 @@ class DPGenerator:
             random.shuffle(ns)
             return ns
 
+        attempts = [0]
+        max_attempts = 50000
+
         def backtrack(current_v):
+            attempts[0] += 1
+            if attempts[0] > max_attempts:
+                return False
+                
             if len(path) >= target_size:
                 # Try to close the loop
                 if start_v in get_neighbors(current_v):
