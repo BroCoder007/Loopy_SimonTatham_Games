@@ -413,6 +413,8 @@ class DynamicProgrammingSolver(AbstractSolver):
         if not result["success"]:
              result = solver.solve(ignore_current_edges=True)
 
+        self.dp_state_count = result.get("nodes_visited", 0)
+
         if not result["success"]:
             raise RuntimeError(
                 "DP: No valid solutions exist for the current board state. "
