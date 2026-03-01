@@ -368,3 +368,131 @@ class LiveAnalysisPanel(tk.Toplevel):
         self.deiconify()
         self.lift()
         self.focus_force()
+
+class AIVsAIAnalysisPanel(tk.Toplevel):
+    """
+    Live comparison of two AIs playing against each other.
+    """
+    def __init__(self, master, game_state):
+        super().__init__(master)
+        self.game_state = game_state
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        self.title("\U0001f916 AI vs AI Live Stats")
+        self.geometry("1100x650")
+        self.minsize(900, 500)
+        self.configure(bg=BG_COLOR)
+
+        header = tk.Frame(self, bg=BG_COLOR)
+        header.pack(fill=tk.X, padx=20, pady=(15, 5))
+
+        tk.Label(
+            header, text="AI vs AI Performance",
+            font=("Segoe UI", 18, "bold"), bg=BG_COLOR, fg=TEXT_COLOR,
+        ).pack(side=tk.LEFT)
+        
+        # Legend
+        legend_frame = tk.Frame(header, bg=BG_COLOR)
+        legend_frame.pack(side=tk.RIGHT)
+
+        tk.Label(legend_frame, text="\u25a0", font=("Segoe UI", 14), bg=BG_COLOR, fg="#FF9F0A").pack(side=tk.LEFT, padx=(8, 3))
+        tk.Label(legend_frame, text="Player 1 (CPU)", font=("Segoe UI", 9, "bold"), bg=BG_COLOR, fg=TEXT_COLOR).pack(side=tk.LEFT)
+        tk.Label(legend_frame, text="\u25a0", font=("Segoe UI", 14), bg=BG_COLOR, fg="#0A84FF").pack(side=tk.LEFT, padx=(14, 3))
+        tk.Label(legend_frame, text="Player 2 (CPU)", font=("Segoe UI", 9, "bold"), bg=BG_COLOR, fg=TEXT_COLOR).pack(side=tk.LEFT)
+
+        # Labels for strategy names
+        self.lbl_p1_strat = tk.Label(self, text=f"P1: {self.game_state.solver_strategy_p1}", font=("Consolas", 11, "italic"), bg=BG_COLOR, fg="#FF9F0A")
+        self.lbl_p1_strat.pack(anchor="w", padx=25)
+        
+        self.lbl_p2_strat = tk.Label(self, text=f"P2: {self.game_state.solver_strategy_p2}", font=("Consolas", 11, "italic"), bg=BG_COLOR, fg="#0A84FF")
+        self.lbl_p2_strat.pack(anchor="w", padx=25, pady=(0, 10))
+
+        # Graph
+        graph_frame = tk.Frame(self, bg=BG_COLOR)
+        graph_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=8)
+
+        self.fig = Figure(figsize=(10, 4), dpi=100, facecolor=BG_COLOR)
+        gs = gridspec.GridSpec(1, 1)
+        self.ax1 = self.fig.add_subplot(gs[0])
+
+        self.canvas = FigureCanvasTkAgg(self.fig, graph_frame)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        self._is_open = True
+
+    def _style_axis(self, ax, title, ylabel=""):
+        ax.set_title(title, fontsize=13, color=TEXT_COLOR, fontweight="bold", pad=12)
+        ax.tick_params(colors=TEXT_DIM, labelsize=9)
+        ax.set_facecolor("#0D1B2A")
+        ax.set_xlabel("Move # (Pairs)", fontsize=9, color=TEXT_DIM)
+        if ylabel:
+            ax.set_ylabel(ylabel, fontsize=9, color=TEXT_DIM)
+        for spine in ax.spines.values():
+            spine.set_color("#1B2838")
+        ax.grid(True, color="#1B2838", linestyle="-", linewidth=0.4, alpha=0.5, axis="y")
+
+    def update_data(self):
+        if not self._is_open: return
+        stats = getattr(self.game_state, "ai_vs_ai_stats", [])
+        if not stats: return
+
+        # Group by rounds (pairs of moves)
+        p1_times = []
+        p2_times = []
+        
+        for s in stats:
+            t = s["time"] * 1000  # ms
+            if "Player 1" in s["player"]:
+                p1_times.append(t)
+            else:
+                p2_times.append(t)
+
+        n = max(len(p1_times), len(p2_times))
+        
+        # Pad with 0s if uneven
+        while len(p1_times) < n: p1_times.append(0)
+        while len(p2_times) < n: p2_times.append(0)
+
+        self.ax1.clear()
+        
+        x = np.arange(n)
+        bar_w = 0.35
+
+        self.ax1.bar(
+            x - bar_w / 2, p1_times, bar_w,
+            color="#FF9F0A", alpha=0.85, label="Player 1",
+            edgecolor="#CC7A00", linewidth=0.3, zorder=3,
+        )
+        self.ax1.bar(
+            x + bar_w / 2, p2_times, bar_w,
+            color="#0A84FF", alpha=0.85, label="Player 2",
+            edgecolor="#005A9E", linewidth=0.3, zorder=3,
+        )
+
+        self.ax1.set_xticks(x)
+        self.ax1.set_xticklabels([str(i+1) for i in x], fontsize=8)
+        self._style_axis(self.ax1, "Execution Time per Move (ms)", "milliseconds (ms)")
+        self.ax1.set_ylim(bottom=0)
+
+        self.ax1.legend(
+            fontsize=8, facecolor="#0D1B2A", edgecolor="#333",
+            labelcolor=TEXT_COLOR, loc="upper left", framealpha=0.9,
+        )
+
+        try:
+            self.fig.tight_layout(pad=1.5)
+        except:
+            pass
+        self.canvas.draw()
+
+    def _on_close(self):
+        self._is_open = False
+        self.withdraw()
+
+    def show(self):
+        self._is_open = True
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+

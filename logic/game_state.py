@@ -36,17 +36,24 @@ class GameState:
         self.clues = {}
         self.solution_edges = set()  # Filled by _generate_clues()
         if game_mode in ["vs_cpu", "expert"]:
-            if self.solver_strategy == "dynamic_programming":
-                self.cpu = DynamicProgrammingSolver(self)
-            elif self.solver_strategy == "advanced_dp":
-                from logic.solvers.advanced_dp_solver import AdvancedDPSolver
-                self.cpu = AdvancedDPSolver(self)
-            elif self.solver_strategy == "greedy":
-                from logic.solvers.greedy_solver import GreedySolver
-                self.cpu = GreedySolver(self)
-            else:
-                self.cpu = DivideConquerSolver(self)
+            self.solver_strategy = self._normalize_solver_strategy(solver_strategy)
+            self.cpu = self._instantiate_solver(self.solver_strategy)
             self.strategy_controller = StrategyController(self, self.solver_strategy)
+        elif game_mode == "ai_vs_ai":
+            s1 = solver_strategy.get("p1", "greedy") if isinstance(solver_strategy, dict) else "greedy"
+            s2 = solver_strategy.get("p2", "divide_conquer") if isinstance(solver_strategy, dict) else "divide_conquer"
+            self.solver_strategy_p1 = self._normalize_solver_strategy(s1)
+            self.solver_strategy_p2 = self._normalize_solver_strategy(s2)
+            
+            self.cpu_p1 = self._instantiate_solver(self.solver_strategy_p1)
+            self.cpu_p2 = self._instantiate_solver(self.solver_strategy_p2)
+            
+            self.strategy_controller_p1 = StrategyController(self, self.solver_strategy_p1)
+            self.strategy_controller_p2 = StrategyController(self, self.solver_strategy_p2)
+            
+            # For compatibility if any older method expects exactly one `cpu`
+            self.cpu = self.cpu_p1
+            self.strategy_controller = self.strategy_controller_p1
         else:
             self.cpu = None
             self.strategy_controller = None
@@ -72,6 +79,9 @@ class GameState:
         elif game_mode == "vs_cpu":
             self.turn = "Player 1 (Human)"
             self._generate_clues()
+        elif game_mode == "ai_vs_ai":
+            self.turn = "Player 1 (CPU)"
+            self._generate_clues()
         else:
             self.turn = "Player 1"
             self._generate_clues()
@@ -85,6 +95,18 @@ class GameState:
 
         self.live_analysis_table = []  # Stores rows of comparative analysis data
         self.teacher_mode = False  # Teacher mode for hinting bad moves
+
+    def _instantiate_solver(self, strategy: str):
+        if strategy == "dynamic_programming":
+            return DynamicProgrammingSolver(self)
+        elif strategy == "advanced_dp":
+            from logic.solvers.advanced_dp_solver import AdvancedDPSolver
+            return AdvancedDPSolver(self)
+        elif strategy == "greedy":
+            from logic.solvers.greedy_solver import GreedySolver
+            return GreedySolver(self)
+        else:
+            return DivideConquerSolver(self)
 
     def _normalize_solver_strategy(self, strategy):
         """
@@ -128,6 +150,9 @@ class GameState:
                 return False # Human trying to move on CPU turn
             if self.turn == "Player 1 (Human)" and is_cpu:
                 return False # CPU trying to move on Human turn
+        elif self.game_mode == "ai_vs_ai":
+            if not is_cpu:
+                return False # Human cannot play in AI vs AI mode
         
         edge = tuple(sorted((u, v)))
         cost = self.edge_weights.get(edge, 0)
@@ -225,12 +250,21 @@ class GameState:
         Returns:
             (move, source_label, solver_used, fallback_message)
         """
-        if self.strategy_controller is None:
+        controller = self.strategy_controller
+        if self.game_mode == "ai_vs_ai":
+            if self.turn == "Player 1 (CPU)":
+                controller = self.strategy_controller_p1
+                self.cpu = self.cpu_p1 # ensure appropriate solver is registered as cpu
+            else:
+                controller = self.strategy_controller_p2
+                self.cpu = self.cpu_p2
+
+        if controller is None:
             return None, "No moves available", None, None
 
-        move, source = self.strategy_controller.get_next_cpu_move()
-        solver_used = self.strategy_controller.get_solver_for_source(source)
-        fallback_message = self.strategy_controller.get_fallback_message(source)
+        move, source = controller.get_next_cpu_move()
+        solver_used = controller.get_solver_for_source(source)
+        fallback_message = controller.get_fallback_message(source)
         return move, source, solver_used, fallback_message
 
     def _generate_clues(self):
@@ -549,6 +583,11 @@ class GameState:
                 self.turn = "Player 2 (CPU)"
             else:
                 self.turn = "Player 1 (Human)"
+        elif self.game_mode == "ai_vs_ai":
+            if self.turn == "Player 1 (CPU)":
+                self.turn = "Player 2 (CPU)"
+            else:
+                self.turn = "Player 1 (CPU)"
         else:  # two_player mode
             if self.turn == "Player 1":
                 self.turn = "Player 2"

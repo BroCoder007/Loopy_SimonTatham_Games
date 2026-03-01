@@ -28,6 +28,7 @@ class HomePage(tk.Frame):
         self.on_show_help = on_show_help
         self.selected_mode = None  # No default mode initially
         self.selected_strategy = None  # Selected after difficulty via modal
+        self.selected_strategy_p2 = None # For AI vs AI mode
         
         # Hero Section
         tk.Label(self, text="Loopy.", font=FONT_TITLE, bg=BG_COLOR, fg=TEXT_COLOR).pack(pady=(80, 10))
@@ -50,6 +51,9 @@ class HomePage(tk.Frame):
         
         self.btn_greedy = HoverButton(mode_frame, text="Expert Level", command=lambda: self.set_mode("expert"), width=20, fg=APPLE_ORANGE)
         self.btn_greedy.pack(side=tk.LEFT, padx=5)
+
+        self.btn_ai_vs_ai = HoverButton(mode_frame, text="AI vs AI", command=lambda: self.set_mode("ai_vs_ai"), width=20, fg=TEXT_COLOR)
+        self.btn_ai_vs_ai.pack(side=tk.LEFT, padx=5)
         
         # Help Button
         HoverButton(self, text="How to Play", command=self.on_show_help, width=15, fg=TEXT_COLOR, bg=BG_COLOR).pack(pady=(20, 0))
@@ -64,6 +68,7 @@ class HomePage(tk.Frame):
         self.btn_vs_cpu.config(bg=SIDEBAR_COLOR, fg=APPLE_PURPLE)
         self.btn_2p.config(bg=SIDEBAR_COLOR, fg=APPLE_TEAL)
         self.btn_greedy.config(bg=SIDEBAR_COLOR, fg=APPLE_ORANGE)
+        self.btn_ai_vs_ai.config(bg=SIDEBAR_COLOR, fg=TEXT_COLOR)
         
         if mode == "vs_cpu":
             self.btn_vs_cpu.config(bg=ACCENT_COLOR, fg="white")
@@ -71,15 +76,26 @@ class HomePage(tk.Frame):
             self.btn_2p.config(bg=ACCENT_COLOR, fg="white")
         elif mode == "expert":
             self.btn_greedy.config(bg=ACCENT_COLOR, fg="white")
+        elif mode == "ai_vs_ai":
+            self.btn_ai_vs_ai.config(bg=ACCENT_COLOR, fg="white")
             
         # Show difficulty card if not already shown
         if not self.diff_card.winfo_ismapped():
             self.diff_card.pack(pady=10)
     
     def start_with_mode(self, rows, cols, difficulty, generator_type="dp"):
-        self._show_strategy_modal(
-            on_selected=lambda strategy: self.on_start_game(rows, cols, difficulty, self.selected_mode, strategy, generator_type)
-        )
+        if self.selected_mode == "ai_vs_ai":
+            self._show_dual_strategy_modal(
+                on_selected=lambda s1, s2: self.on_start_game(
+                    rows, cols, difficulty, self.selected_mode, {"p1": s1, "p2": s2}, generator_type
+                )
+            )
+        else:
+            self._show_strategy_modal(
+                on_selected=lambda strategy: self.on_start_game(
+                    rows, cols, difficulty, self.selected_mode, strategy, generator_type
+                )
+            )
 
     def _show_strategy_modal(self, on_selected):
         """
@@ -167,6 +183,88 @@ class HomePage(tk.Frame):
 
         HoverButton(btns, text="Back", command=cancel_and_close, width=10, fg=WARNING_COLOR).pack(side=tk.LEFT)
         HoverButton(btns, text="Start", command=commit_and_close, width=10, fg=SUCCESS_COLOR).pack(side=tk.RIGHT)
+
+        dlg.protocol("WM_DELETE_WINDOW", cancel_and_close)
+        dlg.wait_window()
+
+    def _show_dual_strategy_modal(self, on_selected):
+        """
+        Modal dialog shown after difficulty selection for AI vs AI mode.
+        """
+        dlg = tk.Toplevel(self)
+        dlg.title("Select AI Strategies")
+        dlg.configure(bg=BG_COLOR)
+        dlg.resizable(False, False)
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+
+        try:
+            dlg.update_idletasks()
+            x = self.winfo_rootx() + 120
+            y = self.winfo_rooty() + 120
+            dlg.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
+
+        card = CardFrame(dlg, padx=30, pady=25)
+        card.pack(padx=20, pady=20)
+
+        tk.Label(card, text="Select AI Strategies", font=FONT_HEADER, bg=CARD_BG, fg=TEXT_COLOR).pack(pady=(0, 10))
+        
+        # Player 1 (CPU)
+        tk.Label(card, text="Player 1 (CPU) Strategy:", font=FONT_BODY, bg=CARD_BG, fg=TEXT_DIM).pack(anchor="w", pady=(10, 5))
+        choice_p1 = tk.StringVar(value="greedy")
+        options = [
+            ("Greedy Solver", "greedy"),
+            ("Divide & Conquer Solver", "divide_conquer"),
+            ("Dynamic Programming Solver", "dynamic_programming"),
+            ("Advanced DP", "advanced_dp"),
+        ]
+        
+        frame_p1 = tk.Frame(card, bg=CARD_BG)
+        frame_p1.pack(fill=tk.X)
+        for label, value in options:
+            tk.Radiobutton(frame_p1, text=label, variable=choice_p1, value=value,
+                           bg=CARD_BG, fg=TEXT_COLOR, selectcolor=CARD_BG,
+                           activebackground=CARD_BG, activeforeground=TEXT_COLOR,
+                           font=FONT_SMALL).pack(side=tk.LEFT, padx=5)
+
+        # Player 2 (CPU)
+        tk.Label(card, text="Player 2 (CPU) Strategy:", font=FONT_BODY, bg=CARD_BG, fg=TEXT_DIM).pack(anchor="w", pady=(15, 5))
+        choice_p2 = tk.StringVar(value="divide_conquer")
+        
+        frame_p2 = tk.Frame(card, bg=CARD_BG)
+        frame_p2.pack(fill=tk.X)
+        for label, value in options:
+            tk.Radiobutton(frame_p2, text=label, variable=choice_p2, value=value,
+                           bg=CARD_BG, fg=TEXT_COLOR, selectcolor=CARD_BG,
+                           activebackground=CARD_BG, activeforeground=TEXT_COLOR,
+                           font=FONT_SMALL).pack(side=tk.LEFT, padx=5)
+
+        btns = tk.Frame(card, bg=CARD_BG)
+        btns.pack(fill=tk.X, pady=(20, 0))
+
+        def commit_and_close():
+            s1 = choice_p1.get() or "greedy"
+            s2 = choice_p2.get() or "divide_conquer"
+            self.selected_strategy = s1
+            self.selected_strategy_p2 = s2
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+            on_selected(s1, s2)
+
+        def cancel_and_close():
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+
+        HoverButton(btns, text="Back", command=cancel_and_close, width=10, fg=WARNING_COLOR).pack(side=tk.LEFT)
+        HoverButton(btns, text="Start Battle", command=commit_and_close, width=15, fg=SUCCESS_COLOR).pack(side=tk.RIGHT)
 
         dlg.protocol("WM_DELETE_WINDOW", cancel_and_close)
         dlg.wait_window()
@@ -284,6 +382,12 @@ class GamePage(tk.Frame):
                                       command=self.toggle_analysis_panel)
         chk_analysis.pack(side=tk.RIGHT, padx=5)
         
+        # In AI vs AI mode, hide Undo/Redo/Hint and Auto-Solve, as AIs play autonomously.
+        if self.game_state.game_mode == "ai_vs_ai":
+            for widget in controls.winfo_children():
+                if isinstance(widget, HoverButton) and widget.cget("text") in ["Undo", "Redo", "Hint", "Auto-Solve (DP)"]:
+                    widget.pack_forget()
+
         HoverButton(controls, text="End Game", command=self.end_game, fg=ERROR_COLOR).pack(side=tk.RIGHT, padx=5)
 
         # Game Area: Board (left) + Reasoning Panel (right)
@@ -313,11 +417,19 @@ class GamePage(tk.Frame):
         self.analysis_panel = None
         
         self.update_ui()
+        
+        # In AI vs AI mode, trigger the first move automatically
+        if self.game_state.game_mode == "ai_vs_ai" and "CPU" in self.game_state.turn:
+            self.after(1000, self.cpu_move)
 
     def toggle_analysis_panel(self):
         if self.var_live_analysis.get():
             if self.analysis_panel is None:
-                self.analysis_panel = LiveAnalysisPanel(self, self.game_state)
+                if self.game_state.game_mode == "ai_vs_ai":
+                    from ui.analysis_panel import AIVsAIAnalysisPanel
+                    self.analysis_panel = AIVsAIAnalysisPanel(self, self.game_state)
+                else:
+                    self.analysis_panel = LiveAnalysisPanel(self, self.game_state)
             else:
                 self.analysis_panel.show()
             self.analysis_panel.update_data()
@@ -340,17 +452,16 @@ class GamePage(tk.Frame):
             
         self.check_game_over()
         
-        if (not self.game_state.game_over and 
-            self.game_state.game_mode in ["vs_cpu", "expert"] and 
-            self.game_state.turn == "Player 2 (CPU)"):
-            
-            # Start CPU thinking process
-            self.after(500, self.cpu_move)
+        if not self.game_state.game_over:
+            if self.game_state.game_mode in ["vs_cpu", "expert"] and self.game_state.turn == "Player 2 (CPU)":
+                self.after(500, self.cpu_move)
+            elif self.game_state.game_mode == "ai_vs_ai" and "CPU" in self.game_state.turn:
+                self.after(500, self.cpu_move)
 
     def cpu_move(self):
         """Non-blocking CPU move: offloads analysis to background thread."""
         # 0. Live Analysis Hook — run in background, never block UI
-        if self.var_live_analysis.get() and self.analysis_panel is not None:
+        if self.game_state.game_mode != "ai_vs_ai" and self.var_live_analysis.get() and getattr(self, "analysis_panel", None) is not None:
              self.game_state.message = "⏳ Running Comparative Analysis..."
              self.update_ui()
 
@@ -361,7 +472,7 @@ class GamePage(tk.Frame):
              self.after(33, self._poll_analysis_result)
              return  # Don't block — polling will continue
 
-        # No live analysis — proceed directly with CPU move
+        # No live analysis or AI vs AI mode — proceed directly with CPU move
         self._proceed_with_cpu_move()
 
     def _poll_analysis_result(self):
@@ -384,9 +495,36 @@ class GamePage(tk.Frame):
 
     def _proceed_with_cpu_move(self):
         """Execute the actual CPU move decision (called after analysis completes)."""
+        import time
+        start_time = time.perf_counter()
+
         # 1. Decide through hierarchical strategy controller.
         best_move, strategy_source, solver_used, fallback_message = self.game_state.get_next_cpu_move()
 
+        elapsed = time.perf_counter() - start_time
+
+        if self.game_state.game_mode == "ai_vs_ai":
+            # Record stats for AI vs AI
+            active_player = self.game_state.turn
+            states = 0
+            if solver_used:
+                if hasattr(solver_used, "nodes_visited"): states = getattr(solver_used, "nodes_visited", 0)
+                elif hasattr(solver_used, "dp_state_count"): states = getattr(solver_used, "dp_state_count", 0)
+
+            stats = {
+                "player": active_player,
+                "strategy": strategy_source,
+                "time": elapsed,
+                "states": states,
+                "move": best_move
+            }
+            if not hasattr(self.game_state, "ai_vs_ai_stats"):
+                self.game_state.ai_vs_ai_stats = []
+            self.game_state.ai_vs_ai_stats.append(stats)
+
+            if getattr(self, "analysis_panel", None) and getattr(self.analysis_panel, "_is_open", False):
+                self.analysis_panel.update_data()
+        
         if best_move:
             # Execute move (panel update happens inside finalize_cpu_move)
             self._execute_cpu_move(best_move, strategy_source, solver_used, fallback_message)
@@ -462,6 +600,11 @@ class GamePage(tk.Frame):
 
         self.update_ui()
         self.check_game_over()
+        
+        # In AI vs AI mode, trigger the next CPU's move
+        if not self.game_state.game_over and self.game_state.game_mode == "ai_vs_ai" and "CPU" in self.game_state.turn:
+            self.after(500, self.cpu_move)
+            
         return True
 
     def check_game_over(self):
@@ -477,6 +620,9 @@ class GamePage(tk.Frame):
                      play_sound("win")
                      
             messagebox.showinfo("Game Over", msg)
+            if self.game_state.game_mode == "ai_vs_ai" and getattr(self, "analysis_panel", None):
+                # Optionally keep the graph open in AI vs AI
+                return
             # Auto-exit to homepage after 3 seconds
             self.after(3000, self.on_back)
 
