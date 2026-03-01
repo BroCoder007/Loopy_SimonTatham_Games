@@ -17,6 +17,7 @@ from logic.game_state import GameState
 from ui.audio import play_sound
 from ui.strategy_store import strategy_store
 from logic.live_analysis import LiveAnalysisService
+from logic.solver_worker import AnalysisWorker
 from ui.analysis_panel import LiveAnalysisPanel
 from ui.cpu_reasoning_panel import CPUReasoningPanel
 
@@ -163,7 +164,6 @@ class HomePage(tk.Frame):
             except Exception:
                 pass
             dlg.destroy()
-            on_selected(selected)
 
         HoverButton(btns, text="Back", command=cancel_and_close, width=10, fg=WARNING_COLOR).pack(side=tk.LEFT)
         HoverButton(btns, text="Start", command=commit_and_close, width=10, fg=SUCCESS_COLOR).pack(side=tk.RIGHT)
@@ -348,18 +348,42 @@ class GamePage(tk.Frame):
             self.after(500, self.cpu_move)
 
     def cpu_move(self):
-        # 0. Live Analysis Hook
+        """Non-blocking CPU move: offloads analysis to background thread."""
+        # 0. Live Analysis Hook — run in background, never block UI
         if self.var_live_analysis.get() and self.analysis_panel is not None:
-             self.game_state.message = "Running Comparative Analysis..."
-             self.update_ui()
-             self.update_idletasks()
-             
-             service = LiveAnalysisService(self.game_state)
-             service.run_analysis()
-             self.analysis_panel.update_data()
-             self.game_state.message = "Analysis Complete. CPU deciding..."
+             self.game_state.message = "⏳ Running Comparative Analysis..."
              self.update_ui()
 
+             service = LiveAnalysisService(self.game_state)
+             self._analysis_worker = AnalysisWorker(service.run_analysis)
+             self._analysis_worker.start()
+             # Poll at ~30 FPS until analysis completes
+             self.after(33, self._poll_analysis_result)
+             return  # Don't block — polling will continue
+
+        # No live analysis — proceed directly with CPU move
+        self._proceed_with_cpu_move()
+
+    def _poll_analysis_result(self):
+        """Poll the background analysis worker at 30 FPS."""
+        if not hasattr(self, '_analysis_worker') or self._analysis_worker is None:
+            self._proceed_with_cpu_move()
+            return
+
+        if self._analysis_worker.is_done():
+            # Analysis complete — update graphs from main thread
+            if self.analysis_panel is not None:
+                self.analysis_panel.update_data()
+            self.game_state.message = "Analysis Complete. CPU deciding..."
+            self.update_ui()
+            self._analysis_worker = None
+            self._proceed_with_cpu_move()
+        else:
+            # Still running — keep polling
+            self.after(33, self._poll_analysis_result)
+
+    def _proceed_with_cpu_move(self):
+        """Execute the actual CPU move decision (called after analysis completes)."""
         # 1. Decide through hierarchical strategy controller.
         best_move, strategy_source, solver_used, fallback_message = self.game_state.get_next_cpu_move()
 

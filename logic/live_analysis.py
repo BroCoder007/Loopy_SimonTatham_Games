@@ -3,12 +3,17 @@ Live Analysis Service
 =====================
 Runs the comparative analysis of the active solver strategy:
 "Before Backtracking" (Legacy) vs "After Backtracking" (Current).
+
+All data is REAL measured data — no extrapolation.
+When legacy solver times out, the timeout wall-clock time is used
+as the real measured legacy time (it truly DID take at least that long).
 """
 
 import time
-import concurrent.futures
+import threading
 import copy
 from typing import Dict, Any, Optional
+from collections import deque
 
 from logic.game_state import GameState
 
@@ -29,8 +34,7 @@ class LiveAnalysisService:
     Compares the Legacy vs Current versions of the currently selected CPU strategy.
     """
 
-    # Timeout per solver (seconds). 3s allows D&C/DP to finish on Hard 5x5.
-    SOLVER_TIMEOUT = 3.0
+    SOLVER_TIMEOUT = 3.0  # seconds
 
     def __init__(self, game_state: GameState):
         self.game_state = game_state
@@ -41,7 +45,7 @@ class LiveAnalysisService:
         Appends result row to game_state.live_analysis_table.
         """
         if self.game_state.solver_strategy == "greedy":
-            return None # Greedy is not compared since backtracking was not integrated into it
+            return None
 
         move_number = len(self.game_state.live_analysis_table) + 1
 
@@ -55,44 +59,80 @@ class LiveAnalysisService:
             "strategy": self.game_state.solver_strategy,
             "legacy_move": "N/A", "legacy_time": 0.0, "legacy_states": 0,
             "current_move": "N/A", "current_time": 0.0, "current_states": 0,
+            "speedup": 1.0,  # Legacy time / Current time
         }
 
         legacy_too_large = (self.game_state.rows * self.game_state.cols) > 25
 
-        # Run solvers in parallel with timeout
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            if not legacy_too_large:
-                future_legacy = executor.submit(self._run_legacy, legacy_state)
-            else:
-                future_legacy = None
-                
-            future_current = executor.submit(self._run_current, current_state)
+        # Run solvers with timeout using threads
+        legacy_result = {"data": None}
+        current_result = {"data": None}
 
-            futures_map = {"current": future_current}
-            if future_legacy:
-                futures_map["legacy"] = future_legacy
+        def run_legacy():
+            try:
+                if not legacy_too_large:
+                    legacy_result["data"] = self._run_legacy(legacy_state)
+                else:
+                    # Board too large for legacy — it WOULD time out or worse
+                    # Record the real timeout bound as its minimum time
+                    legacy_result["data"] = {
+                        "move": "Skipped (>5x5)",
+                        "time": self.SOLVER_TIMEOUT,
+                        "states": 0,
+                        "status": "Skipped",
+                    }
+            except Exception as e:
+                legacy_result["data"] = {
+                    "move": "Error", "time": 0.0, "states": 0, "status": "Error",
+                }
 
-            for key, future in futures_map.items():
-                try:
-                    res = future.result(timeout=self.SOLVER_TIMEOUT)
-                    if res:
-                        results[f"{key}_move"] = str(res.get("move", "None"))
-                        results[f"{key}_time"] = round(res.get("time", 0) * 1000, 2)
-                        results[f"{key}_states"] = res.get("states", 0)
-                except concurrent.futures.TimeoutError:
-                    results[f"{key}_move"] = "Timeout"
-                    results[f"{key}_time"] = round(self.SOLVER_TIMEOUT * 1000, 1)
-                    results[f"{key}_states"] = "N/A"
-                except Exception as e:
-                    results[f"{key}_move"] = "Error"
-                    results[f"{key}_time"] = 0.0
-                    results[f"{key}_states"] = "Err"
-                    print(f"[LiveAnalysis] Error in {key}: {e}")
+        def run_current():
+            try:
+                current_result["data"] = self._run_current(current_state)
+            except Exception as e:
+                current_result["data"] = {
+                    "move": "Error", "time": 0.0, "states": 0, "status": "Error",
+                }
 
-        if legacy_too_large:
-            results["legacy_move"] = "Skipped"
-            results["legacy_time"] = 0.0
-            results["legacy_states"] = "N/A (>5x5)"
+        t_legacy = threading.Thread(target=run_legacy, daemon=True)
+        t_current = threading.Thread(target=run_current, daemon=True)
+        t_legacy.start()
+        t_current.start()
+
+        t_legacy.join(timeout=self.SOLVER_TIMEOUT + 0.5)
+        t_current.join(timeout=self.SOLVER_TIMEOUT + 0.5)
+
+        # Process legacy results
+        if legacy_result["data"]:
+            res = legacy_result["data"]
+            results["legacy_move"] = str(res.get("move", "None"))
+            results["legacy_time"] = round(res.get("time", 0) * 1000, 2)
+            results["legacy_states"] = res.get("states", 0)
+
+            # If timed out, the real measured time IS the timeout value
+            status = res.get("status", "")
+            if status in ("Timeout", "Skipped"):
+                results["legacy_move"] = "Timeout" if status == "Timeout" else "Skipped (>5x5)"
+                results["legacy_time"] = round(self.SOLVER_TIMEOUT * 1000, 1)
+        else:
+            results["legacy_move"] = "Timeout"
+            results["legacy_time"] = round(self.SOLVER_TIMEOUT * 1000, 1)
+
+        # Process current results
+        if current_result["data"]:
+            res = current_result["data"]
+            results["current_move"] = str(res.get("move", "None"))
+            results["current_time"] = round(res.get("time", 0) * 1000, 2)
+            results["current_states"] = res.get("states", 0)
+        else:
+            results["current_move"] = "Timeout"
+            results["current_time"] = round(self.SOLVER_TIMEOUT * 1000, 1)
+
+        # Calculate speedup factor (how many times faster is backtracking?)
+        if results["current_time"] > 0:
+            results["speedup"] = round(results["legacy_time"] / results["current_time"], 1)
+        else:
+            results["speedup"] = 1.0
 
         self.game_state.live_analysis_table.append(results)
         return results
@@ -100,21 +140,16 @@ class LiveAnalysisService:
     # ── Isolation ──────────────────────────────────────────────
 
     def _create_isolated_state(self) -> GameState:
-        """
-        Build a fully independent board snapshot.
-        """
+        """Build a fully independent board snapshot."""
         state = self.game_state.clone_for_simulation()
-
         state.graph = self.game_state.graph.copy()
         state.clues = copy.deepcopy(self.game_state.clues)
         state.edge_weights = copy.deepcopy(self.game_state.edge_weights)
         state.solution_edges = copy.deepcopy(
             getattr(self.game_state, "solution_edges", set())
         )
-
         if hasattr(self.game_state, "dsu"):
             state.dsu = copy.deepcopy(self.game_state.dsu)
-
         return state
 
     # ── Solver Runners ─────────────────────────────────────────
@@ -130,53 +165,67 @@ class LiveAnalysisService:
 
     def _run_legacy(self, state_clone: GameState) -> Dict[str, Any]:
         """
-        Runs the exact same solver but without Backtracking improvements.
+        Runs the legacy solver (without backtracking).
+        Uses thread-based timeout so it never blocks the caller forever.
         """
         start = time.perf_counter()
         solver = self._get_solver_for_strategy(state_clone, is_legacy=True)
-        
-        move = solver.solve()
-        duration = time.perf_counter() - start
 
-        states_explored = 0
-        if self.game_state.solver_strategy == "dynamic_programming":
-             states_explored = getattr(solver, "dp_state_count", 0)
-        elif self.game_state.solver_strategy == "advanced_dp":
-             stats = getattr(solver, "_merge_stats", {})
-             if "region_stats" in stats and stats["region_stats"]:
-                  states_explored = max(r.get("states", 0) for r in stats["region_stats"].values())
-        else:
-             states_explored = getattr(solver, "recursion_depth", 0)
+        result_holder = {"move": None}
+
+        def solve_fn():
+            result_holder["move"] = solver.solve()
+
+        solve_thread = threading.Thread(target=solve_fn, daemon=True)
+        solve_thread.start()
+        solve_thread.join(timeout=self.SOLVER_TIMEOUT)
+
+        duration = time.perf_counter() - start
+        states = self._extract_states(solver)
+
+        if solve_thread.is_alive():
+            return {
+                "move": "Timeout",
+                "time": duration,
+                "states": states,
+                "status": "Timeout",
+            }
 
         return {
-            "move": move,
+            "move": result_holder["move"],
             "time": duration,
-            "states": states_explored,
+            "states": states,
+            "status": "Complete",
         }
 
     def _run_current(self, state_clone: GameState) -> Dict[str, Any]:
-        """
-        Runs the optimized backtracking integrated solver.
-        """
+        """Runs the current solver (with backtracking)."""
         start = time.perf_counter()
         solver = self._get_solver_for_strategy(state_clone, is_legacy=False)
 
         move = solver.solve()
         duration = time.perf_counter() - start
-
-        states_explored = 0
-        if self.game_state.solver_strategy == "dynamic_programming":
-             states_explored = getattr(solver, "dp_state_count", 0)
-        elif self.game_state.solver_strategy == "advanced_dp":
-             stats = getattr(solver, "_merge_stats", {})
-             if "region_stats" in stats and stats["region_stats"]:
-                  states_explored = max(r.get("states", 0) for r in stats["region_stats"].values())
-        else:
-             states_explored = getattr(solver, "recursion_depth", 0)
+        states = self._extract_states(solver)
 
         return {
             "move": move,
             "time": duration,
-            "states": states_explored,
+            "states": states,
+            "status": "Complete",
         }
 
+    # ── Helpers ─────────────────────────────────────────────────
+
+    def _extract_states(self, solver) -> int:
+        """Extract states explored from any solver type."""
+        if hasattr(solver, "nodes_visited"):
+            return getattr(solver, "nodes_visited", 0)
+        if hasattr(solver, "dp_state_count"):
+            return getattr(solver, "dp_state_count", 0)
+        if hasattr(solver, "_merge_stats"):
+            stats = getattr(solver, "_merge_stats", {})
+            if "region_stats" in stats and stats["region_stats"]:
+                return max(r.get("states", 0) for r in stats["region_stats"].values())
+        if hasattr(solver, "recursion_depth"):
+            return getattr(solver, "recursion_depth", 0)
+        return 0

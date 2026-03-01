@@ -55,6 +55,22 @@ class BoardCanvas(tk.Canvas):
         self.start_x = (width - grid_w) // 2
         self.start_y = (height - grid_h) // 2
         
+        # If the board is larger than the window, scale down the cell size
+        margin_x = 80
+        margin_y = 80
+        max_cell_w = max(20, int((width - margin_x) / max(1, cols)))
+        max_cell_h = max(20, int((height - margin_y) / max(1, rows)))
+        
+        from ui.styles import CELL_SIZE
+        self.cell_size = min(CELL_SIZE, max_cell_w, max_cell_h)
+        
+        # Recalculate grid width/height with scaled cell size
+        grid_w = cols * self.cell_size
+        grid_h = rows * self.cell_size
+        
+        self.start_x = (width - grid_w) // 2
+        self.start_y = (height - grid_h) // 2
+        
         # Draw Background Grid (Very subtle dots)
         for r in range(rows + 1):
             for c in range(cols + 1):
