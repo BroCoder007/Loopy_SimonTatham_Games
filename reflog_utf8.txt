@@ -1,0 +1,8 @@
+8792f48 HEAD@{0}: reset: moving to 8792f48
+8792f48 HEAD@{1}: commit: feature : added different colors for edges in AI vs AI mode
+7736597 HEAD@{2}: commit: fix : AI vs AI is automatic now with live analysis with BACKTRACKING MODE TOO included
+d1300bc HEAD@{3}: commit: fix : AI vs AI mode in constant mode of waiting
+8e4299e HEAD@{4}: commit: issue fix: fixed issue caused by interaction between two solvers getting "confused" and trying to execute moves completely out-of-sync with the current board state:
+860e563 HEAD@{5}: commit: super fix : fixing player's out of sync movement with board
+56f84d9 HEAD@{6}: commit: super feature : AI vs AI match making with the player choosing what starategy they use. Along with live analysis of each player's time to make each move
+9c09412 HEAD@{7}: clone: from https://github.com/BroCoder007/Loopy_SimonTatham_Games.git

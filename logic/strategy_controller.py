@@ -18,7 +18,7 @@ from typing import Any, Optional, Tuple
 from logic.solvers.advanced_dp_solver import AdvancedDPSolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
-
+from logic.solvers.dp_backtracking_solver import DPBacktrackingSolver
 
 class StrategyController:
     def __init__(self, game_state: Any, mode: str):
@@ -28,6 +28,7 @@ class StrategyController:
         self.dp_solver = DynamicProgrammingSolver(game_state)
         self.advanced_dp_solver = AdvancedDPSolver(game_state)
         self.dnc_solver = DivideConquerSolver(game_state)
+        self.dp_backtracking_solver = DPBacktrackingSolver(game_state)
 
     def get_next_cpu_move(self) -> Tuple[Optional[Any], str]:
         """
@@ -77,6 +78,12 @@ class StrategyController:
                 return move, "D&C"
             return None, "No moves available"
 
+        if self.selected_mode == "dp_backtracking":
+            move = self._try_solver(self.dp_backtracking_solver)
+            if move is not None:
+                return move, "DP & Backtracking"
+            return None, "No moves available"
+
         # Default fallback (if mode is unknown or "greedy")
         return None, "No greedy solver available"
 
@@ -90,6 +97,8 @@ class StrategyController:
             return self.dp_solver
         if "D&C" in source: # D&C or D&C (Fallback)
             return self.dnc_solver
+        if source == "DP & Backtracking":
+            return self.dp_backtracking_solver
 
         return None
 
@@ -138,6 +147,8 @@ class StrategyController:
             return "dp"
         if mode in ("advanced_dp", "adp", "advanced"):
             return "advanced_dp"
+        if mode in ("dp_backtracking", "backtracking", "dp_backtrack"):
+            return "dp_backtracking"
         if mode in ("divide_conquer", "divide_and_conquer", "dnc"):
             return "dnc"
         return "dnc" # Default to D&C if unknown or greedy

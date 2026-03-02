@@ -1,0 +1,20 @@
+﻿8792f48 feature : added different colors for edges in AI vs AI mode
+7736597 fix : AI vs AI is automatic now with live analysis with BACKTRACKING MODE TOO included
+d1300bc fix : AI vs AI mode in constant mode of waiting
+8e4299e issue fix: fixed issue caused by interaction between two solvers getting "confused" and trying to execute moves completely out-of-sync with the current board state:
+860e563 super fix : fixing player's out of sync movement with board
+56f84d9 super feature : AI vs AI match making with the player choosing what starategy they use. Along with live analysis of each player's time to make each move
+9c09412 Refactor solver architecture and update live analysis visualizations
+0d724eb feat: commit latest changes
+7f76ca6 improv: added backtracking with O(1) incremental updates
+a101b35 Add audio module, CPU reasoning panel, and strategy store
+44e28d3 perf: heavily optimize DP backtracking solver with constraint propagation and cycle detection
+0c3ea0a feat: Core Solver & UI Integration - Memoized backtracking & wiring
+a8561b3 feat: Intelligent Hint Engine - DP pathfinding & validation
+6e204b3 feat: Phase 3 Puzzle Generator - DP difficulty & backtracking
+508441b feat: Add Stealth Demo Puzzle (Greedy-Breaker) and Presentation Charts Script
+b2d3ab9 Resolve merge conflicts, enable Advanced DP in UI, simplify explanations
+90a0fe9 Commit all recent changes and cleanup
+c4803d4 build: generate Python bytecode cache files.
+abe0457 feat: Add Divide & Conquer and Dynamic Programming solvers and a strategy controller.
+7c7e588 Merge branch 'feature/cognitive-reasoning-final' into main. Resolved greedy/DP solver conflicts.

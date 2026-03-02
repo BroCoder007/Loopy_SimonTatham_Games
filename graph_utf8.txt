@@ -1,0 +1,56 @@
+﻿* 2f7f5d9 Revert "feat: commit latest changes"
+* 8792f48 feature : added different colors for edges in AI vs AI mode
+* 7736597 fix : AI vs AI is automatic now with live analysis with BACKTRACKING MODE TOO included
+* d1300bc fix : AI vs AI mode in constant mode of waiting
+* 8e4299e issue fix: fixed issue caused by interaction between two solvers getting "confused" and trying to execute moves completely out-of-sync with the current board state:
+* 860e563 super fix : fixing player's out of sync movement with board
+* 56f84d9 super feature : AI vs AI match making with the player choosing what starategy they use. Along with live analysis of each player's time to make each move
+* 9c09412 Refactor solver architecture and update live analysis visualizations
+* 0d724eb feat: commit latest changes
+* 7f76ca6 improv: added backtracking with O(1) incremental updates
+* a101b35 Add audio module, CPU reasoning panel, and strategy store
+* 44e28d3 perf: heavily optimize DP backtracking solver with constraint propagation and cycle detection
+* 0c3ea0a feat: Core Solver & UI Integration - Memoized backtracking & wiring
+* a8561b3 feat: Intelligent Hint Engine - DP pathfinding & validation
+* 6e204b3 feat: Phase 3 Puzzle Generator - DP difficulty & backtracking
+* 508441b feat: Add Stealth Demo Puzzle (Greedy-Breaker) and Presentation Charts Script
+*   b2d3ab9 Resolve merge conflicts, enable Advanced DP in UI, simplify explanations
+|\  
+| * c4803d4 build: generate Python bytecode cache files.
+| * abe0457 feat: Add Divide & Conquer and Dynamic Programming solvers and a strategy controller.
+* | 90a0fe9 Commit all recent changes and cleanup
+| | * c69ed88 chore: Add conflict resolution script to automatically resolve merge markers in `dynamic_programming_solver.py`.
+| | * 975801f fix: Remove merge conflict markers from dynamic_programming_solver.py
+| |/  
+| *   7c7e588 Merge branch 'feature/cognitive-reasoning-final' into main. Resolved greedy/DP solver conflicts.
+| |\  
+| | *   6019bd7 Merge pull request #7 from likhith1253/feature/loop-solver-improvements
+| | |\  
+| | | *   2b0a24c Merge branch 'main' into feature/loop-solver-improvements
+| | | |\  
+| | | |/  
+| | |/|   
+| | * |   0402685 Merge pull request #6 from BroCoder007/feature/solver-infrastructure
+| | |\ \  
+| | | * | 5774ff6 feat: Add core solver infrastructure and utilities
+| | * | |   40a64a4 Merge pull request #5 from BroCoder007/feature/advanced-algorithms
+| | |\ \ \  
+| | | * | | 39f1969 feat: Implement advanced algorithmic solvers
+| | | |/ /  
+| * | | | 6ce470b Cleanup: Removed GreedySolver implementation and debug files. Refactored architecture to rely solely on Divide & Conquer and DP strategies.
+| * | | | 19e20e3 feat: Add an advanced dynamic programming solver utilizing aggregated profiles and an enhanced hint system.
+|/ / / /  
+* | | | d28e278 Final project state: Integrated Greedy, D&C, and DP solvers with cognitive visualization layer and D&C generator
+* | | | 64dc8e2 Upgrade AdvancedDPSolver to Aggregated Profile DP with D&C fallback
+* | | | b2c1efa feat: implement Cognitive Reasoning Panel, fix Live Analysis, and enhance DP explanations
+| |_|/  
+|/| |   
+* | | 882b7ab Implement improved loop solver logic and UI enhancements
+* | | b4afa6f feat: Enhance game logic and UI components
+| |/  
+|/|   
+* | bf5fa53 Update generators, solvers, and verification tests
+* | 4dfd260 Update solver implementations and validators
+* | f1f7d45 Fix AttributeError for teacher_mode and update game state
+* | 8d004e8 Upload latest changes for Loopy game
+|/  

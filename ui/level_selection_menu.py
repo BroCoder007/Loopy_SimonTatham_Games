@@ -33,6 +33,7 @@ class LevelSelectionMenu(tk.Frame):
         HoverButton(self, text="Easy (4x4)", command=lambda: self._select(4, 4, "Easy"), width=24, fg=APPLE_GREEN).pack(pady=5)
         HoverButton(self, text="Medium (5x5)", command=lambda: self._select(5, 5, "Medium"), width=24, fg=APPLE_BLUE).pack(pady=5)
         HoverButton(self, text="Hard (7x7)", command=lambda: self._select(7, 7, "Hard"), width=24, fg=APPLE_RED).pack(pady=5)
+        HoverButton(self, text="Extreme (10x10)", command=lambda: self._select(10, 10, "Extreme"), width=24, fg=APPLE_ORANGE).pack(pady=5)
 
     def _select(self, rows, cols, difficulty):
         generator_type = self.generator_var.get()

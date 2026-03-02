@@ -1,0 +1,93 @@
+commit 0d724ebd99d5432586224997c40544c0a80b4e27
+Author: BroCoder007 <plnlikhith@gmail.com>
+Date:   Sat Feb 28 23:33:59 2026 +0530
+
+    feat: commit latest changes
+
+ .gitignore                                         |   30 +
+ .../test_determinism.cpython-312-pytest-8.1.0.pyc  |  Bin 3640 -> 0 bytes
+ ...est_enhanced_hints.cpython-312-pytest-8.1.0.pyc |  Bin 7414 -> 0 bytes
+ ...st_execution_trace.cpython-312-pytest-8.1.0.pyc |  Bin 7868 -> 0 bytes
+ .../test_final_fix.cpython-312-pytest-8.1.0.pyc    |  Bin 4627 -> 0 bytes
+ ...st_new_hint_system.cpython-312-pytest-8.1.0.pyc |  Bin 3820 -> 0 bytes
+ ..._performance_trace.cpython-312-pytest-8.1.0.pyc |  Bin 7010 -> 0 bytes
+ benchmark_results.csv                              |   20 +-
+ daa/__pycache__/graph_algos.cpython-312.pyc        |  Bin 3554 -> 0 bytes
+ daa/__pycache__/graph_algos.cpython-314.pyc        |  Bin 3589 -> 0 bytes
+ daa/__pycache__/greedy_algos.cpython-312.pyc       |  Bin 9935 -> 0 bytes
+ daa/__pycache__/greedy_algos.cpython-314.pyc       |  Bin 10071 -> 0 bytes
+ daa/__pycache__/sorting.cpython-312.pyc            |  Bin 5190 -> 0 bytes
+ data/statistics.json                               |    4 +-
+ dp_log.txt                                         |  Bin 0 -> 1646 bytes
+ error.log                                          |  Bin 0 -> 4768 bytes
+ git_hist.txt                                       |  Bin 0 -> 1448 bytes
+ git_log_all.txt                                    |  Bin 0 -> 9000 bytes
+ logic/__pycache__/__init__.cpython-312.pyc         |  Bin 172 -> 0 bytes
+ logic/__pycache__/__init__.cpython-314.pyc         |  Bin 152 -> 0 bytes
+ logic/__pycache__/analysis_mode.cpython-312.pyc    |  Bin 7550 -> 0 bytes
+ logic/__pycache__/execution_trace.cpython-312.pyc  |  Bin 7604 -> 0 bytes
+ logic/__pycache__/execution_trace.cpython-314.pyc  |  Bin 9843 -> 0 bytes
+ logic/__pycache__/game_state.cpython-312.pyc       |  Bin 25421 -> 0 bytes
+ logic/__pycache__/game_state.cpython-314.pyc       |  Bin 26519 -> 0 bytes
+ logic/__pycache__/graph.cpython-312.pyc            |  Bin 3233 -> 0 bytes
+ logic/__pycache__/graph.cpython-314.pyc            |  Bin 3421 -> 0 bytes
+ logic/__pycache__/greedy_cpu.cpython-312.pyc       |  Bin 9054 -> 0 bytes
+ logic/__pycache__/live_analysis.cpython-312.pyc    |  Bin 7669 -> 0 bytes
+ logic/__pycache__/live_analysis.cpython-314.pyc    |  Bin 8731 -> 0 bytes
+ logic/__pycache__/statistics.cpython-312.pyc       |  Bin 2500 -> 0 bytes
+ logic/__pycache__/statistics.cpython-314.pyc       |  Bin 2740 -> 0 bytes
+ .../strategy_controller.cpython-312.pyc            |  Bin 5087 -> 0 bytes
+ .../strategy_controller.cpython-314.pyc            |  Bin 6061 -> 0 bytes
+ logic/__pycache__/validators.cpython-312.pyc       |  Bin 10624 -> 0 bytes
+ logic/__pycache__/validators.cpython-314.pyc       |  Bin 11020 -> 0 bytes
+ logic/game_state.py                                |   15 +-
+ .../__pycache__/dnc_generator.cpython-312.pyc      |  Bin 13653 -> 13668 bytes
+ logic/generators/dp_generator.py                   |    7 +
+ logic/live_analysis.py                             |  153 +-
+ logic/solvers/__pycache__/__init__.cpython-312.pyc |  Bin 180 -> 195 bytes
+ .../__pycache__/advanced_dp_solver.cpython-312.pyc |  Bin 66713 -> 64133 bytes
+ .../divide_conquer_solver.cpython-312.pyc          |  Bin 40294 -> 41258 bytes
+ .../dynamic_programming_solver.cpython-312.pyc     |  Bin 44576 -> 43937 bytes
+ .../__pycache__/greedy_solver.cpython-312.pyc      |  Bin 24277 -> 24292 bytes
+ .../solvers/__pycache__/merge_sort.cpython-312.pyc |  Bin 2721 -> 2736 bytes
+ .../__pycache__/solver_errors.cpython-312.pyc      |  Bin 2240 -> 2255 bytes
+ .../__pycache__/solver_interface.cpython-312.pyc   |  Bin 3933 -> 3948 bytes
+ logic/solvers/advanced_dp_solver.py                |  150 +-
+ logic/solvers/divide_conquer_solver.py             |   89 +-
+ logic/solvers/dp_backtracking_solver.py            |   17 +-
+ logic/solvers/dynamic_programming_solver.py        |   77 +-
+ logic/solvers/legacy_advanced_dp_solver.py         | 1767 ++++++++++++++++++++
+ logic/solvers/legacy_divide_conquer_solver.py      |  886 ++++++++++
+ logic/solvers/legacy_dynamic_programming_solver.py | 1275 ++++++++++++++
+ rescue_log.txt                                     |    6 +
+ rescue_out.txt                                     |  Bin 0 -> 662 bytes
+ result.txt                                         |  Bin 0 -> 4768 bytes
+ result_utf8.txt                                    |   20 +
+ test_dp.py                                         |   13 +
+ test_live.py                                       |   38 +
+ test_rescue.py                                     |   42 +
+ test_solvers.py                                    |   47 +
+ ui/__pycache__/analysis_panel.cpython-312.pyc      |  Bin 14096 -> 0 bytes
+ ui/__pycache__/analysis_panel.cpython-314.pyc      |  Bin 14265 -> 0 bytes
+ ui/__pycache__/analysis_window.cpython-312.pyc     |  Bin 15454 -> 0 bytes
+ ui/__pycache__/audio.cpython-312.pyc               |  Bin 1187 -> 0 bytes
+ ui/__pycache__/audio.cpython-314.pyc               |  Bin 1168 -> 0 bytes
+ ui/__pycache__/board_canvas.cpython-312.pyc        |  Bin 18572 -> 0 bytes
+ ui/__pycache__/board_canvas.cpython-314.pyc        |  Bin 19558 -> 0 bytes
+ ui/__pycache__/components.cpython-312.pyc          |  Bin 2930 -> 0 bytes
+ ui/__pycache__/components.cpython-314.pyc          |  Bin 3114 -> 0 bytes
+ ui/__pycache__/cpu_reasoning_panel.cpython-312.pyc |  Bin 12288 -> 0 bytes
+ ui/__pycache__/cpu_reasoning_panel.cpython-314.pyc |  Bin 13405 -> 0 bytes
+ .../level_selection_menu.cpython-314.pyc           |  Bin 3718 -> 0 bytes
+ ui/__pycache__/main_window.cpython-312.pyc         |  Bin 5729 -> 0 bytes
+ ui/__pycache__/main_window.cpython-314.pyc         |  Bin 5772 -> 0 bytes
+ ui/__pycache__/pages.cpython-312.pyc               |  Bin 34815 -> 0 bytes
+ ui/__pycache__/pages.cpython-314.pyc               |  Bin 32588 -> 0 bytes
+ ui/__pycache__/strategy_store.cpython-312.pyc      |  Bin 1172 -> 0 bytes
+ ui/__pycache__/strategy_store.cpython-314.pyc      |  Bin 1200 -> 0 bytes
+ ui/__pycache__/styles.cpython-312.pyc              |  Bin 1266 -> 0 bytes
+ ui/__pycache__/styles.cpython-314.pyc              |  Bin 1206 -> 0 bytes
+ ui/analysis_panel.py                               |   96 +-
+ ui/board_canvas.py                                 |    9 +-
+ ui/solver_control_panel.py                         |    2 +-
+ 86 files changed, 4458 insertions(+), 305 deletions(-)

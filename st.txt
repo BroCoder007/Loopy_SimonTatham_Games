@@ -1,0 +1,145 @@
+﻿On branch main
+Your branch is up to date with 'origin/main'.
+
+You are currently reverting commit 0d724eb.
+  (fix conflicts and run "git revert --continue")
+  (use "git revert --skip" to skip this patch)
+  (use "git revert --abort" to cancel the revert operation)
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	deleted:    .gitignore
+	new file:   __pycache__/test_determinism.cpython-312-pytest-8.1.0.pyc
+	new file:   __pycache__/test_enhanced_hints.cpython-312-pytest-8.1.0.pyc
+	new file:   __pycache__/test_execution_trace.cpython-312-pytest-8.1.0.pyc
+	new file:   __pycache__/test_final_fix.cpython-312-pytest-8.1.0.pyc
+	new file:   __pycache__/test_new_hint_system.cpython-312-pytest-8.1.0.pyc
+	new file:   __pycache__/test_performance_trace.cpython-312-pytest-8.1.0.pyc
+	modified:   benchmark_results.csv
+	new file:   daa/__pycache__/graph_algos.cpython-312.pyc
+	new file:   daa/__pycache__/graph_algos.cpython-314.pyc
+	new file:   daa/__pycache__/greedy_algos.cpython-312.pyc
+	new file:   daa/__pycache__/greedy_algos.cpython-314.pyc
+	new file:   daa/__pycache__/sorting.cpython-312.pyc
+	deleted:    dp_log.txt
+	deleted:    error.log
+	deleted:    git_hist.txt
+	deleted:    git_log_all.txt
+	new file:   logic/__pycache__/__init__.cpython-312.pyc
+	new file:   logic/__pycache__/__init__.cpython-314.pyc
+	new file:   logic/__pycache__/analysis_mode.cpython-312.pyc
+	new file:   logic/__pycache__/execution_trace.cpython-312.pyc
+	new file:   logic/__pycache__/execution_trace.cpython-314.pyc
+	new file:   logic/__pycache__/game_state.cpython-312.pyc
+	new file:   logic/__pycache__/game_state.cpython-314.pyc
+	new file:   logic/__pycache__/graph.cpython-312.pyc
+	new file:   logic/__pycache__/graph.cpython-314.pyc
+	new file:   logic/__pycache__/greedy_cpu.cpython-312.pyc
+	new file:   logic/__pycache__/live_analysis.cpython-312.pyc
+	new file:   logic/__pycache__/live_analysis.cpython-314.pyc
+	new file:   logic/__pycache__/statistics.cpython-312.pyc
+	new file:   logic/__pycache__/statistics.cpython-314.pyc
+	new file:   logic/__pycache__/strategy_controller.cpython-312.pyc
+	new file:   logic/__pycache__/strategy_controller.cpython-314.pyc
+	new file:   logic/__pycache__/validators.cpython-312.pyc
+	new file:   logic/__pycache__/validators.cpython-314.pyc
+	modified:   logic/generators/__pycache__/dnc_generator.cpython-312.pyc
+	modified:   logic/generators/dp_generator.py
+	modified:   logic/solvers/__pycache__/__init__.cpython-312.pyc
+	modified:   logic/solvers/__pycache__/divide_conquer_solver.cpython-312.pyc
+	modified:   logic/solvers/__pycache__/greedy_solver.cpython-312.pyc
+	modified:   logic/solvers/__pycache__/merge_sort.cpython-312.pyc
+	modified:   logic/solvers/__pycache__/solver_errors.cpython-312.pyc
+	modified:   logic/solvers/__pycache__/solver_interface.cpython-312.pyc
+	modified:   logic/solvers/divide_conquer_solver.py
+	modified:   logic/solvers/dynamic_programming_solver.py
+	deleted:    logic/solvers/legacy_advanced_dp_solver.py
+	deleted:    logic/solvers/legacy_divide_conquer_solver.py
+	deleted:    logic/solvers/legacy_dynamic_programming_solver.py
+	deleted:    rescue_log.txt
+	deleted:    rescue_out.txt
+	deleted:    result.txt
+	deleted:    result_utf8.txt
+	deleted:    test_dp.py
+	deleted:    test_live.py
+	deleted:    test_rescue.py
+	deleted:    test_solvers.py
+	new file:   ui/__pycache__/analysis_panel.cpython-312.pyc
+	new file:   ui/__pycache__/analysis_panel.cpython-314.pyc
+	new file:   ui/__pycache__/analysis_window.cpython-312.pyc
+	new file:   ui/__pycache__/audio.cpython-312.pyc
+	new file:   ui/__pycache__/audio.cpython-314.pyc
+	new file:   ui/__pycache__/board_canvas.cpython-312.pyc
+	new file:   ui/__pycache__/board_canvas.cpython-314.pyc
+	new file:   ui/__pycache__/components.cpython-312.pyc
+	new file:   ui/__pycache__/components.cpython-314.pyc
+	new file:   ui/__pycache__/cpu_reasoning_panel.cpython-312.pyc
+	new file:   ui/__pycache__/cpu_reasoning_panel.cpython-314.pyc
+	new file:   ui/__pycache__/level_selection_menu.cpython-314.pyc
+	new file:   ui/__pycache__/main_window.cpython-312.pyc
+	new file:   ui/__pycache__/main_window.cpython-314.pyc
+	new file:   ui/__pycache__/pages.cpython-312.pyc
+	new file:   ui/__pycache__/pages.cpython-314.pyc
+	new file:   ui/__pycache__/strategy_store.cpython-312.pyc
+	new file:   ui/__pycache__/strategy_store.cpython-314.pyc
+	new file:   ui/__pycache__/styles.cpython-312.pyc
+	new file:   ui/__pycache__/styles.cpython-314.pyc
+	modified:   ui/analysis_panel.py
+
+Unmerged paths:
+  (use "git restore --staged <file>..." to unstage)
+  (use "git add <file>..." to mark resolution)
+	both modified:   data/statistics.json
+	both modified:   logic/live_analysis.py
+	both modified:   logic/solvers/__pycache__/advanced_dp_solver.cpython-312.pyc
+	both modified:   logic/solvers/__pycache__/dynamic_programming_solver.cpython-312.pyc
+	both modified:   logic/solvers/advanced_dp_solver.py
+	both modified:   logic/solvers/dp_backtracking_solver.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   daa/__pycache__/graph_algos.cpython-314.pyc
+	modified:   daa/__pycache__/greedy_algos.cpython-314.pyc
+	modified:   logic/__pycache__/__init__.cpython-314.pyc
+	modified:   logic/__pycache__/game_state.cpython-314.pyc
+	modified:   logic/__pycache__/graph.cpython-314.pyc
+	modified:   logic/__pycache__/live_analysis.cpython-314.pyc
+	modified:   logic/__pycache__/statistics.cpython-314.pyc
+	modified:   logic/__pycache__/strategy_controller.cpython-314.pyc
+	modified:   logic/__pycache__/validators.cpython-314.pyc
+	modified:   logic/solvers/__pycache__/advanced_dp_solver.cpython-314.pyc
+	modified:   logic/solvers/__pycache__/divide_conquer_solver.cpython-314.pyc
+	modified:   logic/solvers/__pycache__/dp_backtracking_solver.cpython-314.pyc
+	modified:   logic/solvers/__pycache__/dynamic_programming_solver.cpython-314.pyc
+	modified:   ui/__pycache__/analysis_panel.cpython-314.pyc
+	modified:   ui/__pycache__/audio.cpython-314.pyc
+	modified:   ui/__pycache__/board_canvas.cpython-314.pyc
+	modified:   ui/__pycache__/components.cpython-314.pyc
+	modified:   ui/__pycache__/cpu_reasoning_panel.cpython-314.pyc
+	modified:   ui/__pycache__/level_selection_menu.cpython-314.pyc
+	modified:   ui/__pycache__/main_window.cpython-314.pyc
+	modified:   ui/__pycache__/pages.cpython-314.pyc
+	modified:   ui/__pycache__/strategy_store.cpython-314.pyc
+	modified:   ui/__pycache__/styles.cpython-314.pyc
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	commit_diff.txt
+	conflict_status.txt
+	gitlog.txt
+	gitlog_utf8.txt
+	logic/__pycache__/dp_hints_engine.cpython-314.pyc
+	logic/__pycache__/solver_worker.cpython-314.pyc
+	logic/generators/__pycache__/dp_generator.cpython-314.pyc
+	logic/solvers/__pycache__/legacy_advanced_dp_solver.cpython-314.pyc
+	logic/solvers/__pycache__/legacy_divide_conquer_solver.cpython-314.pyc
+	logic/solvers/__pycache__/legacy_dynamic_programming_solver.cpython-314.pyc
+	ref.txt
+	reflog.txt
+	reflog_utf8.txt
+	st.txt
+	st2.txt
+	ui/__pycache__/hint_visualizer.cpython-314.pyc
+	ui/__pycache__/solver_control_panel.cpython-314.pyc
+

@@ -78,8 +78,8 @@ class DynamicProgrammingSolver(AbstractSolver):
             return [], None
 
         is_cpu_turn = (
-            self.game_state.game_mode in ["vs_cpu", "expert"]
-            and self.game_state.turn == "Player 2 (CPU)"
+            (self.game_state.game_mode in ["vs_cpu", "expert"] and self.game_state.turn == "Player 2 (CPU)") or
+            (self.game_state.game_mode == "ai_vs_ai" and "CPU" in self.game_state.turn)
         )
 
         if not is_cpu_turn:
@@ -420,7 +420,7 @@ class DynamicProgrammingSolver(AbstractSolver):
         """
         solutions = self._run_dp(self.game_state, limit=None)
 
-        if not solutions:
+        if not result["success"]:
             raise RuntimeError(
                 "DP: No valid solutions exist for the current board state. "
                 "The board may be in an invalid configuration."

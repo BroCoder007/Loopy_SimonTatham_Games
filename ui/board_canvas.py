@@ -55,6 +55,22 @@ class BoardCanvas(tk.Canvas):
         self.start_x = (width - grid_w) // 2
         self.start_y = (height - grid_h) // 2
         
+        # If the board is larger than the window, scale down the cell size
+        margin_x = 80
+        margin_y = 80
+        max_cell_w = max(20, int((width - margin_x) / max(1, cols)))
+        max_cell_h = max(20, int((height - margin_y) / max(1, rows)))
+        
+        from ui.styles import CELL_SIZE
+        self.cell_size = min(CELL_SIZE, max_cell_w, max_cell_h)
+        
+        # Recalculate grid width/height with scaled cell size
+        grid_w = cols * self.cell_size
+        grid_h = rows * self.cell_size
+        
+        self.start_x = (width - grid_w) // 2
+        self.start_y = (height - grid_h) // 2
+        
         # Draw Background Grid (Very subtle dots)
         for r in range(rows + 1):
             for c in range(cols + 1):
@@ -81,7 +97,23 @@ class BoardCanvas(tk.Canvas):
         
         # Draw Active Edges
         for edge in self.game_state.graph.edges:
-            self._draw_edge(edge, TEXT_COLOR, width=3) # White lines
+            color = TEXT_COLOR
+            width = 3
+            
+            # Color specific to AI vs AI ownership
+            if getattr(self.game_state, "game_mode", None) == "ai_vs_ai" and hasattr(self.game_state, "edge_ownership"):
+                owner = self.game_state.edge_ownership.get(edge)
+                if owner == "Player 1 (CPU)":
+                    color = "#4CAF50" # Green
+                elif owner == "Player 2 (CPU)":
+                    color = "#F44336" # Red
+                
+            # Highlight the last CPU move in yellow
+            if self.game_state.last_cpu_move_info and edge == self.game_state.last_cpu_move_info.get("move"):
+                color = APPLE_YELLOW
+                width = 4
+                
+            self._draw_edge(edge, color, width=width)
             
         # Draw Hovered Edge
         if self.hovered_edge:
