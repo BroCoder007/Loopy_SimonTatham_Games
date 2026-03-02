@@ -6,9 +6,8 @@ Refactored for DAA Project: "No-Cheat" Heuristics.
 """
 
 from logic.validators import is_valid_move, count_edges_around_cell
-from daa.sorting import bubble_sort, insertion_sort, selection_sort, merge_sort, quick_sort
+from daa.sorting import merge_sort
 from daa.greedy_algos import fractional_knapsack
-import random
 
 class GreedyCPU:
     def __init__(self, game_state):
@@ -63,14 +62,14 @@ class GreedyCPU:
             if score > 0: # Knapsack needs positive values
                 # Get cost
                 edge = tuple(sorted(move))
-                cost = self.game_state.edge_weights.get(edge, 1) # Default cost 1 (Normal Mode) / Random (Expert)
+                cost = self.game_state.edge_weights.get(edge, 1) # Default cost 1 (Normal Mode) / weighted (Expert)
                 
                 weights.append(cost)
                 values.append(score)
                 knapsack_items_map.append(i)
                 valid_indices.append(i)
         
-        # If no positive moves, fallback to raw candidates (desperation)
+        # If no positive moves, use raw candidates directly (desperation)
         if not weights:
             final_candidates = raw_candidates
         else:
@@ -86,31 +85,20 @@ class GreedyCPU:
                 original_idx = knapsack_items_map[idx]
                 final_candidates.append(raw_candidates[original_idx])
                 
-            # If knapsack selected nothing (rare), fallback
+            # If knapsack selected nothing (rare), use direct selection
             if not final_candidates:
                 final_candidates = raw_candidates
 
         # 3. Select Best Move using Sorting (DAA Requirement)
         moves_to_sort = final_candidates[:] 
-        n = len(moves_to_sort)
-        
-        if n < 20:
-            # Small N: Insertion Sort is optimal
-            sorted_moves = insertion_sort(moves_to_sort, key=lambda x: x[1], reverse=True)
-        elif n < 50:
-            # Medium N: Demonstrate basic O(N^2) sorts
-            if random.random() < 0.5:
-                sorted_moves = bubble_sort(moves_to_sort, key=lambda x: x[1], reverse=True)
-            else:
-                sorted_moves = selection_sort(moves_to_sort, key=lambda x: x[1], reverse=True)
-        else:
-            # Large N: Use O(N log N) sorts
-            if random.random() < 0.5:
-                sorted_moves = merge_sort(moves_to_sort, key=lambda x: x[1], reverse=True)
-            else:
-                sorted_moves = quick_sort(moves_to_sort, key=lambda x: x[1], reverse=True)
+        sorted_moves = merge_sort(moves_to_sort, key=lambda x: x[1], reverse=True)
                 
         best_move = sorted_moves[0][0]
+        best_score = sorted_moves[0][1]
+        
+        # Generate reasoning for the best move so it's ready for UI
+        self.generate_reasoning(best_move, best_score)
+        
         return sorted_moves, best_move
 
     def get_ranked_moves(self):
@@ -227,7 +215,7 @@ class GreedyCPU:
         # New segments are neutral/low: Degree 0 -> 1
         # We prefer extending lines over starting new ones
         if deg_u == 0 and deg_v == 0:
-            score -= 10 # Slight penalty to discourage random scattering
+            score -= 10 # Slight penalty to discourage scattered starts
             
         # ---------------------------------------------------------
         # 4. EXPERT MODE: Energy Awareness
@@ -289,4 +277,5 @@ class GreedyCPU:
                 reasons.append("explore new path")
                 
         reason_str = ", ".join(reasons)
+        self.reasoning = reason_str
         self.game_state.message = f"CPU: Placed at {u}-{v} to {reason_str}."

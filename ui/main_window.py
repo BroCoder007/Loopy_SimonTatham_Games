@@ -13,7 +13,7 @@ class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Loopy DAA - Slitherlink AI Duel")
-        self.geometry("900x700")
+        self.geometry("1200x750")
         self.configure(bg=BG_COLOR)
         
         # Layout
@@ -35,6 +35,8 @@ class MainWindow(tk.Tk):
         self.create_nav_btn("Home", self.show_home)
         self.create_nav_btn("Statistics", self.show_stats)
         self.create_nav_btn("Exit", self.quit)
+
+
         
     def create_nav_btn(self, text, command):
         btn = tk.Button(self.sidebar, text=text, command=command,
@@ -59,9 +61,11 @@ class MainWindow(tk.Tk):
         self.clear_content()
         StatsPage(self.content_area, self.show_home).pack(expand=True, fill=tk.BOTH)
 
-    def start_game(self, rows, cols, difficulty, game_mode):
+    def start_game(self, rows, cols, difficulty, game_mode, solver_strategy=None, generator_type="prim"):
         self.clear_content()
-        game_state = GameState(rows, cols, difficulty, game_mode)
+        # UI wiring only: store/forward selected strategy.
+        # For now, all strategies still use Greedy internally.
+        game_state = GameState(rows, cols, difficulty, game_mode, solver_strategy=solver_strategy, generator_type=generator_type)
         GamePage(self.content_area, game_state, self.show_home).pack(expand=True, fill=tk.BOTH)
 
     def show_help(self):

@@ -38,6 +38,7 @@ FONT_TITLE = (FONT_FAMILY, 32, "bold") # Large, Hero text
 FONT_BODY = (FONT_FAMILY, 11)
 FONT_SMALL = (FONT_FAMILY, 9)
 FONT_CLUE = (FONT_FAMILY, 18, "bold")
+FONT_MONO = ("Consolas", 10)
 
 # Dimensions
 SIDEBAR_WIDTH = 240

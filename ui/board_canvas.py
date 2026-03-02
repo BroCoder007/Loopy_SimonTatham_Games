@@ -10,6 +10,11 @@ from ui.styles import *
 
 class BoardCanvas(tk.Canvas):
     def __init__(self, master, game_state, on_move_callback):
+        try:
+            with open(r"c:\Users\LAKSHMI NARAYANA\Desktop\Loopy_SimonTatham_Games\debug_full.log", "a") as f:
+                f.write("BoardCanvas init called\n")
+        except:
+            pass
         super().__init__(master, bg=BG_COLOR, highlightthickness=0)
         self.game_state = game_state
         self.on_move_callback = on_move_callback
@@ -19,10 +24,18 @@ class BoardCanvas(tk.Canvas):
         
         self.bind("<Button-1>", self.on_click)
         self.bind("<Motion>", self.on_hover)
+        self.bind("<Configure>", self.on_resize)
         
         self.hovered_edge = None
         self.hint_edge = None
         
+        # Initialize coordinates to avoid AttributeError before first draw
+        self.start_x = 0
+        self.start_y = 0
+        
+    def on_resize(self, event):
+        self.draw()
+
     def draw(self):
         self.delete("all")
         
@@ -36,6 +49,22 @@ class BoardCanvas(tk.Canvas):
         if width < 10: width = 600
         if height < 10: height = 600
             
+        grid_w = cols * self.cell_size
+        grid_h = rows * self.cell_size
+        
+        self.start_x = (width - grid_w) // 2
+        self.start_y = (height - grid_h) // 2
+        
+        # If the board is larger than the window, scale down the cell size
+        margin_x = 80
+        margin_y = 80
+        max_cell_w = max(20, int((width - margin_x) / max(1, cols)))
+        max_cell_h = max(20, int((height - margin_y) / max(1, rows)))
+        
+        from ui.styles import CELL_SIZE
+        self.cell_size = min(CELL_SIZE, max_cell_w, max_cell_h)
+        
+        # Recalculate grid width/height with scaled cell size
         grid_w = cols * self.cell_size
         grid_h = rows * self.cell_size
         
@@ -68,7 +97,23 @@ class BoardCanvas(tk.Canvas):
         
         # Draw Active Edges
         for edge in self.game_state.graph.edges:
-            self._draw_edge(edge, TEXT_COLOR, width=3) # White lines
+            color = TEXT_COLOR
+            width = 3
+            
+            # Color specific to AI vs AI ownership
+            if getattr(self.game_state, "game_mode", None) == "ai_vs_ai" and hasattr(self.game_state, "edge_ownership"):
+                owner = self.game_state.edge_ownership.get(edge)
+                if owner == "Player 1 (CPU)":
+                    color = "#4CAF50" # Green
+                elif owner == "Player 2 (CPU)":
+                    color = "#F44336" # Red
+                
+            # Highlight the last CPU move in yellow
+            if self.game_state.last_cpu_move_info and edge == self.game_state.last_cpu_move_info.get("move"):
+                color = APPLE_YELLOW
+                width = 4
+                
+            self._draw_edge(edge, color, width=width)
             
         # Draw Hovered Edge
         if self.hovered_edge:
@@ -111,6 +156,9 @@ class BoardCanvas(tk.Canvas):
                     
                 self.create_text(mx, my, text=str(weight), font=FONT_SMALL, fill=TEXT_DIM)
 
+        # Draw Cognitive Overlay (Reasoning Layer)
+        self._draw_overlay_elements()
+
     def _draw_edge(self, edge, color, width):
         (r1, c1), (r2, c2) = edge
         x1 = self.start_x + c1 * self.cell_size
@@ -152,7 +200,7 @@ class BoardCanvas(tk.Canvas):
             return
             
         # Check against basic rules
-        from logic.greedy_cpu import count_edges_around_cell
+        from logic.validators import count_edges_around_cell
         is_bad = False
         reason = ""
         
@@ -252,6 +300,77 @@ class BoardCanvas(tk.Canvas):
         self.hint_edge = edge
         self.hint_color = color
         self.draw()
+
+    # ------------------------------------------------------------------
+    # COGNITIVE VISUALIZATION LAYER
+    # ------------------------------------------------------------------
+    def show_reasoning_overlay(self, explanation):
+        """
+        Display the cognitive overlay:
+        - Scope highlight (Region/Global/Local)
+        - Decided edge highlight
+        """
+        self.current_overlay = explanation
+        self.draw()
+
+    def clear_overlay(self):
+        self.current_overlay = None
+        self.draw()
+
+    def _draw_overlay_elements(self):
+        if not hasattr(self, "current_overlay") or not self.current_overlay:
+            return
+
+        expl = self.current_overlay
+        
+        # 1. Region Highlight
+        if expl.scope == "Global":
+            # Faint purple over whole board
+            self._draw_region_rect((0, 0, self.game_state.rows-1, self.game_state.cols-1), "#6f42c1", alpha=0.1)
+        
+        elif expl.scope == "Regional" and expl.highlight_region:
+            # Faint blue over specific region
+            self._draw_region_rect(expl.highlight_region, "#17a2b8", alpha=0.15)
+
+        elif expl.scope == "Local" and expl.highlight_cells:
+            # Highlight specific cells involved
+            for r, c in expl.highlight_cells:
+                self._draw_cell_highlight(r, c, "#28a745", alpha=0.2)
+
+        # 2. Edge Highlight (Strong)
+        if expl.highlight_edges:
+            for edge in expl.highlight_edges:
+                self._draw_edge(edge, APPLE_YELLOW, width=5)
+
+    def _draw_region_rect(self, region, color, alpha):
+        # Tkinter doesn't support alpha directly on canvas shapes easily without PIL or stippling.
+        # We'll use a stipple pattern to simulate transparency or just a colored outline + thin crossover.
+        # For a "Cognitive" feel, let's use a nice outline and a very light stipple if possible,
+        # or just a distinct outline convention.
+        
+        # Simulating "Faint" fill with stipple 'gray25' or similar if available, 
+        # but cross-platform stipples are flaky. 
+        # Let's use a hollow rectangle with thick borders for now, or lines.
+        
+        r_min, c_min, r_max, c_max = region
+        
+        x1 = self.start_x + c_min * self.cell_size
+        y1 = self.start_y + r_min * self.cell_size
+        x2 = self.start_x + (c_max + 1) * self.cell_size
+        y2 = self.start_y + (r_max + 1) * self.cell_size
+        
+        # Draw soft background (stippled)
+        self.create_rectangle(x1, y1, x2, y2, fill=color, outline="", stipple="gray12", tags="overlay")
+        # Draw strong border
+        self.create_rectangle(x1, y1, x2, y2, outline=color, width=2, tags="overlay")
+
+    def _draw_cell_highlight(self, r, c, color, alpha):
+        x1 = self.start_x + c * self.cell_size
+        y1 = self.start_y + r * self.cell_size
+        x2 = x1 + self.cell_size
+        y2 = y1 + self.cell_size
+        
+        self.create_rectangle(x1, y1, x2, y2, fill=color, outline="", stipple="gray25", tags="overlay")
 
     # ------------------------------------------------------------------
     # AI VISUALIZATION FEATURES

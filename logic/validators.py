@@ -27,100 +27,12 @@ def is_valid_move(graph, u, v, clues, check_global=False):
         if not check_clue_constraint(graph, u, v, clues, adding=True):
             return False, "Clue Violated"
             
-        # 3. Premature Loop Prevention
-        # We need to temporarily add the edge to check for cycles
-        # Note: We can't actually modify the graph object passed in, 
-        # but we can simulate connectivity checks.
-        
-        # If u and v are ALREADY connected, adding (u,v) creates a cycle.
-        # Check if there is a path between u and v
-        # We can use DFS/BFS from u to see if we can reach v
-        # If yes, adding edge (u,v) closes a loop.
-        
-        # Exception: It is allowed IF this loop satisfies the Win Condition (all clues matched)
-        # But we can't easily check 'all clues matched' for the FUTURE state without modifying.
-        
-        # Optimization: Use DAA `dfs` or `bfs`
-        # We need to construct a temporary view of adjacency or just pass current graph
-        # and see if v is reachable from u.
-        
+        # 3. Premature Loop Prevention:
+        # If adding (u, v) closes a cycle, allow it only when it completes a valid final loop.
         if is_reachable(graph, u, v):
-            # A cycle is being formed.
-            # It is ONLY valid if this cycle completes the game.
-            # To check this efficiently, we check:
-            # - Are all OTHER active vertices part of this cycle? (Single Loop condition)
-            # - Are all clues satisfied? (This is hard to check without applying)
-            
-            # Heuristic for DAA Project:
-            # "Premature Loop" = A small loop that doesn't use all active segments.
-            # If we close a loop, verify if it's the "Main" loop.
-            
-            # Let's count active edges. If the closed loop length < current active edges + 1,
-            # it implies there are disjoint edges elsewhere, so this loop isolates them.
-            # That's a "Premature Loop" (since we want a Single Loop).
-            
-            # Get path length? Overkill.
-            # Simple check: If graph is currently a single connected component (of edges),
-            # closing a loop is fine ONLY IF it connects the 'ends' of the line.
-            # But Slitherlink can have multiple segments during play.
-            
-            # STRICT RULE: A move is invalid if it creates a CLOSED LOOP that does not
-            # include ALL currently active edges.
-            # Actually, even simpler:
-            # If we create a closed loop, we must have NO loose ends left anywhere else.
-            
-            # Let's trust the validator to be called.
-            # For now, we will ALLOW closing loops, but the GameState win checker
-            # will tell us if we won.
-            # BUT, the prompt asks to "Prevent Premature Loop".
-            # So: If forming a cycle, check if (num_edges_in_cycle == total_edges_after_move).
-            # If not, it means we have edges outside the cycle -> Invalid Premature Loop.
-            
-            # To do this efficiently:
-            # 1. Check reachability (u -> v)
-            # 2. If reachable, we are closing a loop.
-            # 3. Check if any other component exists.
-            #    If we are closing the loop, the new component count should be 1.
-            #    Actually, if u and v are in the same component, adding edge keeps count same.
-            #    If they were disjoint, count decreases.
-            
-            # WAIT. If u and v are connected, they are in the same component.
-            # Adding edge (u,v) creates a cycle within that component.
-            # If there are OTHER components (other lines), then this cycle is isolated. -> Premature.
-            # If there are NO other components, is it the whole board?
-            # Maybe there are some 'stranded' edges?
-            
-            # Let's use `count_connected_components` from daa.graph_algos
-            # Note: graph.adj_list includes currently active edges.
-            num_comps = count_connected_components(graph.adj_list, graph.vertices)
-            
-            # If num_comps > 1, then closing a loop in one component leaves others stranded. -> Invalid.
-            if num_comps > 1:
-                return False, "Premature Loop (Disconnected Segments)"
-                
-            # If num_comps == 1, we are closing the ONLY component.
-            # But does it contain ALL active vertices?
-            # A loop has all degrees == 2.
-            # We are adding (u,v). u and v were degree 1 (endpoints). Now they become degree 2.
-            # If ANY other vertex in this component has degree < 2 (i.e. degree 1), 
-            # then we are closing a sub-loop while leaving a tail??
-            # No, if u,v were connected, and we add (u,v), and (u,v) were the ONLY degree 1 nodes,
-            # then result is a perfect loop.
-            # If there were OTHER degree 1 nodes, we can't close a loop between u and v 
-            # because u and v must be the tips.
-            
-            # So: Check if there are any degree 1 nodes OTHER than u and v.
-            degree_ones = [node for node in graph.vertices if graph.get_degree(node) == 1]
-            # Since we are adding (u,v), u and v must sort of be in degree_ones for valid line extension.
-            # If we are closing a loop, u and v MUST be degree 1.
-            
-            # If there are any degree 1 nodes NOT in {u, v}, then those will remain tails.
-            # A closed loop cannot have tails.
-            # So if `len(degree_ones) > 2` (meaning more than just u and v), 
-            # closing a loop now would leave tails. -> Premature Loop.
-            
-            if len(degree_ones) > 2:
-                 return False, "Premature Loop (Leaves Tails)"
+            valid_cycle, reason = _is_valid_cycle_closure_after_add(graph, edge, clues)
+            if not valid_cycle:
+                return False, reason
 
     else:
         # Removing edge
@@ -129,6 +41,148 @@ def is_valid_move(graph, u, v, clues, check_global=False):
         pass
             
     return True, "OK"
+
+
+def _is_valid_cycle_closure_after_add(graph, edge, clues):
+    """
+    Validate whether a cycle-closing add is globally acceptable.
+    Allowed only for a completed single-loop state.
+    """
+    future_edges = set(graph.edges)
+    future_edges.add(edge)
+    future_degree = _compute_future_degrees(graph, edge)
+
+    active_vertices = [v for v in graph.vertices if future_degree.get(v, 0) > 0]
+    if not active_vertices:
+        return False, "Premature Loop (No active loop after closure)"
+
+    degree_one_vertices = [v for v in active_vertices if future_degree.get(v, 0) == 1]
+    if degree_one_vertices:
+        return False, "Premature Loop (Leaves degree-1 vertices)"
+
+    component_count, largest_component_size = _active_component_stats_via_dsu(future_edges)
+    total_active_vertices = len(active_vertices)
+    if component_count != 1 or largest_component_size != total_active_vertices:
+        return False, "Premature Loop (Not a single connected active component)"
+
+    if not _all_clues_exactly_satisfied(graph, edge, clues):
+        return False, "Premature Loop (Clues not fully satisfied)"
+
+    if _has_clue_adjacent_undecided_add(graph, future_edges, clues):
+        return False, "Premature Loop (Clue-adjacent undecided edges remain)"
+
+    return True, "OK"
+
+
+def _compute_future_degrees(graph, edge):
+    """
+    Degree map after hypothetically adding `edge` without mutating graph.
+    """
+    u, v = edge
+    degrees = {node: graph.get_degree(node) for node in graph.vertices}
+    degrees[u] = degrees.get(u, 0) + 1
+    degrees[v] = degrees.get(v, 0) + 1
+    return degrees
+
+
+def _all_clues_exactly_satisfied(graph, added_edge, clues):
+    """
+    Check clue equality in the post-add state.
+    """
+    for cell, clue in clues.items():
+        count = count_edges_around_cell(graph, cell)
+        if _edge_touches_cell(added_edge, cell):
+            count += 1
+        if count != clue:
+            return False
+    return True
+
+
+def _has_clue_adjacent_undecided_add(graph, future_edges, clues):
+    """
+    True when any missing edge around a clue cell could still be added
+    without immediately exceeding that clue.
+    """
+    for cell, clue in clues.items():
+        current_count = 0
+        cell_edges = _cell_edges(cell)
+        for e in cell_edges:
+            if e in future_edges:
+                current_count += 1
+
+        for e in cell_edges:
+            if e in future_edges:
+                continue
+            # If adding e could keep clue not exceeded, clue state is still mutable.
+            if current_count + 1 <= clue:
+                return True
+    return False
+
+
+def _cell_edges(cell):
+    r, c = cell
+    return [
+        tuple(sorted(((r, c), (r, c + 1)))),
+        tuple(sorted(((r + 1, c), (r + 1, c + 1)))),
+        tuple(sorted(((r, c), (r + 1, c)))),
+        tuple(sorted(((r, c + 1), (r + 1, c + 1)))),
+    ]
+
+
+def _edge_touches_cell(edge, cell):
+    return edge in _cell_edges(cell)
+
+
+def _active_component_stats_via_dsu(edges):
+    """
+    Returns (component_count, largest_component_size) over active vertices.
+    """
+    if not edges:
+        return 0, 0
+
+    dsu = _DSU()
+    vertices = set()
+    for u, v in edges:
+        vertices.add(u)
+        vertices.add(v)
+        dsu.union(u, v)
+
+    component_size = {}
+    for node in vertices:
+        root = dsu.find(node)
+        component_size[root] = component_size.get(root, 0) + 1
+
+    sizes = list(component_size.values())
+    return len(sizes), (max(sizes) if sizes else 0)
+
+
+class _DSU:
+    def __init__(self):
+        self.parent = {}
+        self.rank = {}
+
+    def find(self, x):
+        if x not in self.parent:
+            self.parent[x] = x
+            self.rank[x] = 0
+            return x
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]
+            x = self.parent[x]
+        return x
+
+    def union(self, a, b):
+        ra = self.find(a)
+        rb = self.find(b)
+        if ra == rb:
+            return
+        if self.rank[ra] < self.rank[rb]:
+            self.parent[ra] = rb
+        elif self.rank[ra] > self.rank[rb]:
+            self.parent[rb] = ra
+        else:
+            self.parent[rb] = ra
+            self.rank[ra] += 1
 
 def is_reachable(graph, start, target):
     """
