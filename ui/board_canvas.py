@@ -96,17 +96,28 @@ class BoardCanvas(tk.Canvas):
                     self.create_text(x, y, text=str(val), font=FONT_CLUE, fill=color)
         
         # Draw Active Edges
+        # Strategy-based color mapping for AI vs AI mode
+        STRATEGY_COLORS = {
+            "greedy": APPLE_GREEN,          # #30D158 - System Green
+            "divide_conquer": APPLE_TEAL,   # #64D2FF - System Teal
+            "dynamic_programming": APPLE_BLUE, # #0A84FF - System Blue
+            "advanced_dp": APPLE_PURPLE,    # #BF5AF2 - System Purple
+            "dp_backtracking": APPLE_ORANGE, # #FF9F0A - System Orange
+        }
+
         for edge in self.game_state.graph.edges:
             color = TEXT_COLOR
             width = 3
             
-            # Color specific to AI vs AI ownership
+            # Color specific to AI vs AI ownership — strategy-based colors
             if getattr(self.game_state, "game_mode", None) == "ai_vs_ai" and hasattr(self.game_state, "edge_ownership"):
                 owner = self.game_state.edge_ownership.get(edge)
                 if owner == "Player 1 (CPU)":
-                    color = "#4CAF50" # Green
+                    strategy = getattr(self.game_state, "solver_strategy_p1", "greedy")
+                    color = STRATEGY_COLORS.get(strategy, APPLE_GREEN)
                 elif owner == "Player 2 (CPU)":
-                    color = "#F44336" # Red
+                    strategy = getattr(self.game_state, "solver_strategy_p2", "divide_conquer")
+                    color = STRATEGY_COLORS.get(strategy, APPLE_TEAL)
                 
             # Highlight the last CPU move in yellow
             if self.game_state.last_cpu_move_info and edge == self.game_state.last_cpu_move_info.get("move"):

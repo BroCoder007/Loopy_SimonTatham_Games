@@ -524,6 +524,10 @@ class GamePage(tk.Frame):
                 self.game_state.ai_vs_ai_stats = []
             self.game_state.ai_vs_ai_stats.append(stats)
 
+            # Log move to console for visibility
+            print(f"[AI vs AI] {active_player} ({strategy_source}) -> {best_move} "
+                  f"[time={elapsed:.3f}s, states={states}]")
+
             if getattr(self, "analysis_panel", None) and getattr(self.analysis_panel, "_is_open", False):
                 self.analysis_panel.update_data()
         

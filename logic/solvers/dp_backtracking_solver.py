@@ -29,7 +29,7 @@ class DPBacktrackingSolver:
     - True DP State Memoization hashing on the array of edges
     """
 
-    DEFAULT_TIMEOUT = 3.0
+    DEFAULT_TIMEOUT = 10.0
     DEFAULT_MAX_STATES = 10_000_000
     METRICS_PUSH_INTERVAL = 500    # push metrics every N nodes
     YIELD_CHECK_INTERVAL = 200     # check stop/timeout every N nodes
@@ -58,7 +58,14 @@ class DPBacktrackingSolver:
         self._last_metrics_states = 0
         self._branch_counts = []     # track branching for metrics
 
-        # --- Precomputed cell-edge mappings ---
+        # --- Precomputed cell-edge mappings (lazy, built on first solve) ---
+        self.cell_edges = None
+        self.edge_to_cells = None
+
+    def _ensure_precomputed(self):
+        """Build cell-edge mappings lazily (clues may not exist at __init__ time)."""
+        if self.cell_edges is not None:
+            return
         self.cell_edges = {}
         self.edge_to_cells = {e: [] for e in self.all_edges}
         for r in range(self.rows):
@@ -89,6 +96,7 @@ class DPBacktrackingSolver:
         return tuple(edges)
 
     def solve(self, ui_callback=None, delay=0.0):
+        self._ensure_precomputed()
         self.dp_cache.clear()
         self.nodes_visited = 0
         self.cache_hits = 0
@@ -156,12 +164,47 @@ class DPBacktrackingSolver:
         """
         AI wrapper to find a single next move based on the full mathematical solution.
         """
+        print(f"[DP Backtracking] decide_move called. Current edges: {len(self.game_state.graph.edges)}")
         result = self.solve()
+        print(f"[DP Backtracking] solve result: success={result['success']}, status={result['status']}, "
+              f"nodes={result['nodes_visited']}, time={result['time_taken']:.3f}s, "
+              f"cache_hits={result['cache_hits']}")
+        
         if not result["success"]:
+            print(f"[DP Backtracking] Solver FAILED (status={result['status']}). Trying fallback via solution_edges...")
+            # Fallback: use the known solution_edges from puzzle generation
+            current_edges = set(self.game_state.graph.edges)
+            known_solution = getattr(self.game_state, "solution_edges", set())
+            
+            if known_solution:
+                from logic.validators import is_valid_move
+                
+                # Priority 1: Add edges from the solution that are missing (make progress)
+                for edge_tuple in known_solution:
+                    if edge_tuple not in current_edges:
+                        valid, _ = is_valid_move(self.game_state.graph, edge_tuple[0], edge_tuple[1], self.game_state.clues)
+                        if valid:
+                            print(f"[DP Backtracking] Fallback ADD move: {edge_tuple}")
+                            return True, edge_tuple
+                
+                # Priority 2: Remove own wrong edges only (not opponent's)
+                edge_ownership = getattr(self.game_state, "edge_ownership", {})
+                current_turn = getattr(self.game_state, "turn", "")
+                for edge_tuple in list(current_edges):
+                    if edge_tuple not in known_solution:
+                        owner = edge_ownership.get(edge_tuple)
+                        # Only remove edges we own, or unowned edges
+                        if not owner or owner == current_turn:
+                            print(f"[DP Backtracking] Fallback REMOVE (own edge) move: {edge_tuple}")
+                            return True, edge_tuple
+            
+            print(f"[DP Backtracking] No fallback move available.")
             return False, None
             
         current_edges = set(self.game_state.graph.edges)
         solution_edges = result["edges"]
+        
+        print(f"[DP Backtracking] Solution has {len(solution_edges)} edges, board has {len(current_edges)} edges")
         
         from logic.validators import is_valid_move
         
@@ -170,25 +213,30 @@ class DPBacktrackingSolver:
             if edge_tuple not in current_edges:
                 valid, _ = is_valid_move(self.game_state.graph, edge_tuple[0], edge_tuple[1], self.game_state.clues)
                 if valid:
+                    print(f"[DP Backtracking] Selected ADD move: {edge_tuple}")
                     return True, edge_tuple
                 
-        # Find an edge on the board that shouldn't be there
+        # Find an edge on the board that shouldn't be there (backtrack move)
         for edge_tuple in current_edges:
             if edge_tuple not in solution_edges:
-                valid, _ = is_valid_move(self.game_state.graph, edge_tuple[0], edge_tuple[1], self.game_state.clues)
-                if valid:
-                    return True, edge_tuple
+                # Backtrack moves: removing wrong edges. Skip validation check for removals
+                # since removing an edge is always a valid action.
+                print(f"[DP Backtracking] Selected REMOVE (backtrack) move: {edge_tuple}")
+                return True, edge_tuple
                 
         # If all strictly valid moves are exhausted but we need to push forward (rare edge case), 
         # just pick the first missing edge to force progress, and it might fail in `make_move`.
         for edge_tuple in solution_edges:
             if edge_tuple not in current_edges:
+                print(f"[DP Backtracking] Forcing ADD move (bypassing validation): {edge_tuple}")
                 return True, edge_tuple
 
         for edge_tuple in current_edges:
             if edge_tuple not in solution_edges:
+                print(f"[DP Backtracking] Forcing REMOVE move (bypassing validation): {edge_tuple}")
                 return True, edge_tuple
 
+        print(f"[DP Backtracking] No move found at all!")
         return False, None
         
     def explain_last_move(self) -> str:

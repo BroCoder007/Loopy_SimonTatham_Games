@@ -112,6 +112,18 @@ class CPUReasoningPanel(tk.Frame):
             self._set_waiting_state()
             return
 
+        # Handle plain dict payloads (e.g. from DPBacktrackingSolver)
+        if isinstance(explanation, dict):
+            explanation = MoveExplanation(
+                mode=explanation.get("mode", "Unknown"),
+                scope=explanation.get("scope", "Global"),
+                decision_summary=explanation.get("decision_summary", str(explanation.get("reasoning_data", ""))),
+                highlight_cells=explanation.get("highlight_cells", []),
+                highlight_edges=explanation.get("highlight_edges", []),
+                highlight_region=explanation.get("highlight_region", None),
+                reasoning_data=explanation.get("reasoning_data", {}),
+            )
+
         self._move_count += 1
 
         # 1. Update Mode Badge

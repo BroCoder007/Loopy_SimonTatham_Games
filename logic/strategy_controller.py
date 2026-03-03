@@ -19,6 +19,7 @@ from logic.solvers.advanced_dp_solver import AdvancedDPSolver
 from logic.solvers.divide_conquer_solver import DivideConquerSolver
 from logic.solvers.dynamic_programming_solver import DynamicProgrammingSolver
 from logic.solvers.dp_backtracking_solver import DPBacktrackingSolver
+from logic.solvers.greedy_solver import GreedySolver
 
 class StrategyController:
     def __init__(self, game_state: Any, mode: str):
@@ -29,6 +30,7 @@ class StrategyController:
         self.advanced_dp_solver = AdvancedDPSolver(game_state)
         self.dnc_solver = DivideConquerSolver(game_state)
         self.dp_backtracking_solver = DPBacktrackingSolver(game_state)
+        self.greedy_solver = GreedySolver(game_state)
 
     def get_next_cpu_move(self) -> Tuple[Optional[Any], str]:
         """
@@ -84,6 +86,12 @@ class StrategyController:
                 return move, "DP & Backtracking"
             return None, "No moves available"
 
+        if self.selected_mode == "greedy":
+            move = self._try_solver(self.greedy_solver)
+            if move is not None:
+                return move, "Greedy"
+            return None, "No moves available"
+
         # Default fallback (if mode is unknown or "greedy")
         return None, "No greedy solver available"
 
@@ -91,14 +99,16 @@ class StrategyController:
         """Return the solver instance that produced the move."""
         if source == "Advanced DP":
             return self.advanced_dp_solver
+        if source == "DP & Backtracking":
+            return self.dp_backtracking_solver
         if "DP" in source: # DP or DP (Fallback)
             if "Advanced" in source: 
                 return self.advanced_dp_solver
             return self.dp_solver
         if "D&C" in source: # D&C or D&C (Fallback)
             return self.dnc_solver
-        if source == "DP & Backtracking":
-            return self.dp_backtracking_solver
+        if source == "Greedy":
+            return self.greedy_solver
 
         return None
 
@@ -136,7 +146,10 @@ class StrategyController:
 
             if hasattr(solver, "solve"):
                 return solver.solve()
-        except Exception:
+        except Exception as e:
+            print(f"[StrategyController] Solver {type(solver).__name__} raised exception: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
         return None
@@ -151,4 +164,6 @@ class StrategyController:
             return "dp_backtracking"
         if mode in ("divide_conquer", "divide_and_conquer", "dnc"):
             return "dnc"
-        return "dnc" # Default to D&C if unknown or greedy
+        if mode in ("greedy",):
+            return "greedy"
+        return "greedy" # Default to Greedy if unknown

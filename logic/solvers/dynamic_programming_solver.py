@@ -420,7 +420,7 @@ class DynamicProgrammingSolver(AbstractSolver):
         """
         solutions = self._run_dp(self.game_state, limit=None)
 
-        if not result["success"]:
+        if not solutions:
             raise RuntimeError(
                 "DP: No valid solutions exist for the current board state. "
                 "The board may be in an invalid configuration."

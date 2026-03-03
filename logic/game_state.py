@@ -166,6 +166,12 @@ class GameState:
         cost = self.edge_weights.get(edge, 0)
         
         if edge in self.graph.edges:
+            # In AI vs AI mode, prevent removing opponent's edges
+            if self.game_mode == "ai_vs_ai":
+                owner = self.edge_ownership.get(edge)
+                if owner and owner != self.turn:
+                    self.message = "Cannot remove opponent's edge"
+                    return False
             # Removing edge
             self.graph.remove_edge(u, v)
             self.edge_ownership.pop(edge, None)

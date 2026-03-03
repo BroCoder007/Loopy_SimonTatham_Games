@@ -1,0 +1,23 @@
+﻿Testing AI vs AI using Greedy (P1) vs DP Backtracking (P2)
+[GameState] Using Phase 3 DP Backtracking Generator...
+Goal: 6 edges to form loop.
+Initial edges: 0
+Turn 0: Player 1 (CPU) (Greedy) selected move ((2, 1), (2, 2))
+[DP Backtracking] decide_move called. Current edges: 1
+[DP Backtracking] solve result: success=True, status=Success, nodes=42, time=0.000s, cache_hits=0
+[DP Backtracking] Solution has 6 edges, board has 1 edges
+[DP Backtracking] Selected ADD move: ((2, 3), (3, 3))
+Turn 1: Player 2 (CPU) (DP & Backtracking) selected move ((2, 3), (3, 3))
+Turn 2: Player 1 (CPU) (Greedy) selected move ((3, 1), (3, 2))
+[DP Backtracking] decide_move called. Current edges: 3
+[DP Backtracking] solve result: success=True, status=Success, nodes=40, time=0.000s, cache_hits=0
+[DP Backtracking] Solution has 6 edges, board has 3 edges
+[DP Backtracking] Selected ADD move: ((3, 2), (3, 3))
+Turn 3: Player 2 (CPU) (DP & Backtracking) selected move ((3, 2), (3, 3))
+Turn 4: Player 1 (CPU) (Greedy) selected move ((2, 1), (3, 1))
+[DP Backtracking] decide_move called. Current edges: 5
+[DP Backtracking] solve result: success=True, status=Success, nodes=38, time=0.000s, cache_hits=0
+[DP Backtracking] Solution has 6 edges, board has 5 edges
+[DP Backtracking] Selected ADD move: ((2, 2), (2, 3))
+Turn 5: Player 2 (CPU) (DP & Backtracking) selected move ((2, 2), (2, 3))
+Game over status: True, Winner: Player 2 (CPU)
